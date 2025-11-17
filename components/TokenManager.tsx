@@ -167,14 +167,15 @@ export function TokenManager({ className = '' }: TokenManagerProps) {
         }
       }
       
-      // Valider le token via l'endpoint de validation
+      // Valider les cookies complets via l'endpoint de validation
+      // IMPORTANT: Envoyer les cookies complets, pas juste le token
       const response = await fetch('/api/v1/token/validate', {
         method: 'POST',
         headers: {
           'x-api-key': process.env.NEXT_PUBLIC_API_SECRET || 'vinted_scraper_secure_2024',
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ token: extractedToken })
+        body: JSON.stringify({ cookies: cookies }) // Envoyer les cookies complets
       })
       
       const result = await response.json()

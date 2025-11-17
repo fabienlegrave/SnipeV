@@ -43,7 +43,8 @@ export function buildVintedApiHeaders(session: FullVintedSession): Record<string
     'cache-control': 'no-cache',
     'connection': 'keep-alive',
     'cookie': session.fullCookieString,
-    'host': 'www.vinted.fr',
+    // ⚠️ NE PAS définir 'host' - Node.js le gère automatiquement
+    // Définir 'host' manuellement cause des erreurs 403 sur Vercel/Cloudflare
     'pragma': 'no-cache',
     'sec-ch-ua': '"Google Chrome";v="141", "Not?A_Brand";v="8", "Chromium";v="141"',
     'sec-ch-ua-arch': '"x86"',
@@ -75,7 +76,8 @@ export function buildFullVintedHeaders(session: FullVintedSession): Record<strin
     'cache-control': 'no-cache', // EXACT du navigateur
     'pragma': 'no-cache', // AJOUTÉ du navigateur
     'connection': 'keep-alive',
-    'host': 'www.vinted.fr',
+    // ⚠️ NE PAS définir 'host' - Node.js le gère automatiquement
+    // Définir 'host' manuellement cause des erreurs 403 sur Vercel/Cloudflare
     // Headers sec-ch-ua EXACTS du navigateur qui fonctionne
     'sec-ch-ua': '"Not A(Brand";v="8", "Chromium";v="132", "Microsoft Edge";v="132"',
     'sec-ch-ua-arch': '"x86"',
