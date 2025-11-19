@@ -15,7 +15,7 @@ import { VisionFactsDisplay } from '@/components/ui/vision-facts-display'
 import { supabaseClient } from '@/lib/supabase'
 import { formatPrice, formatDate } from '@/lib/utils'
 import type { VintedItem } from '@/lib/types'
-import { ArrowLeft, ExternalLink, RefreshCw, Package, Heart, Eye, ShoppingCart, Truck, Shield, User, Euro, Gamepad2, MapPin, Tag, Star } from 'lucide-react'
+import { ArrowLeft, ExternalLink, RefreshCw, Package, ShoppingCart, Truck, Shield, User, Euro, Gamepad2, MapPin, Tag, Star } from 'lucide-react'
 
 const API_SECRET = process.env.NEXT_PUBLIC_API_SECRET || 'vinted_scraper_secure_2024'
 
@@ -347,17 +347,6 @@ export default function ItemDetailPage() {
                 )}
               </div>
 
-              {/* Stats */}
-              <div className="grid grid-cols-2 gap-4">
-                <div className="flex items-center gap-2 text-gray-600">
-                  <Heart className="h-4 w-4" />
-                  <span>{item.favourite_count || 0} favorites</span>
-                </div>
-                <div className="flex items-center gap-2 text-gray-600">
-                  <Eye className="h-4 w-4" />
-                  <span>{item.view_count || 0} views</span>
-                </div>
-              </div>
 
               {/* Description */}
               {item.description && (

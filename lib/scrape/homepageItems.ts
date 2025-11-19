@@ -71,6 +71,17 @@ export async function getHomepageItems(
     if (!response.ok) {
       const errorText = await response.text()
       logger.error(`❌ Erreur homepage API: HTTP ${response.status} - ${errorText.substring(0, 200)}`)
+      
+      // Message d'erreur plus explicite pour 403
+      if (response.status === 403) {
+        const hasAccessToken = session.accessToken && session.accessToken.length > 0
+        if (!hasAccessToken) {
+          throw new Error(`Homepage API error: HTTP 403 - Cet endpoint nécessite un access_token_web (authentification complète). Les cookies Cloudflare/Datadome seuls ne suffisent pas.`)
+        } else {
+          throw new Error(`Homepage API error: HTTP 403 - Les cookies peuvent être expirés ou invalides. Veuillez régénérer vos cookies.`)
+        }
+      }
+      
       throw new Error(`Homepage API error: HTTP ${response.status}`)
     }
 

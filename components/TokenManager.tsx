@@ -41,8 +41,7 @@ export function TokenManager({ className = '' }: TokenManagerProps) {
   const cookieMonitor = useCookieMonitor(60) // Vérifie toutes les heures
   const [renewalLogs, setRenewalLogs] = useState<string[]>([])
   const [isRenewing, setIsRenewing] = useState(false)
-  const [isFetchingCookies, setIsFetchingCookies] = useState(false)
-  const [isGeneratingCookies, setIsGeneratingCookies] = useState(false)
+  const [isCookieFactory, setIsCookieFactory] = useState(false)
   
   // Mode cookies complets uniquement (le token simple ne fonctionne pas)
 
@@ -80,13 +79,38 @@ export function TokenManager({ className = '' }: TokenManagerProps) {
     timestamp: tokenInfo.validatedAt.toISOString()
   } : null
 
-  const checkTokenStatus = async () => {
+  const checkTokenStatus = async (cookiesOverride?: string) => {
+    console.log('🔍 checkTokenStatus appelé', { cookiesOverride: !!cookiesOverride, hasFullCookies: !!fullCookies })
     setIsLoading(true)
     try {
+      // Forcer une relecture du store pour avoir les dernières valeurs
+      if (typeof window !== 'undefined') {
+        const store = getClientTokenStore()
+        store.loadFromStorage()
+        const freshTokenInfo = store.getTokenInfo()
+        console.log('🔄 Store rechargé:', {
+          hasFreshToken: !!freshTokenInfo?.token,
+          hasFreshCookies: !!freshTokenInfo?.fullCookies,
+          freshCookiesLength: freshTokenInfo?.fullCookies?.length || 0
+        })
+      }
+      
       // PRIORITÉ : Utiliser les cookies complets s'ils sont disponibles (meilleur pour Cloudflare)
       // Sinon, utiliser le token
-      const currentToken = token || tokenInfo?.token
-      const currentCookies = fullCookies
+      // Si cookiesOverride est fourni, l'utiliser en priorité (pour éviter les problèmes de timing avec le store)
+      // Recharger depuis le store pour avoir les dernières valeurs
+      const store = typeof window !== 'undefined' ? getClientTokenStore() : null
+      const freshTokenInfo = store?.getTokenInfo()
+      const currentToken = cookiesOverride ? undefined : (freshTokenInfo?.token || token || tokenInfo?.token)
+      const currentCookies = cookiesOverride || freshTokenInfo?.fullCookies || fullCookies
+      
+      console.log('🔍 État de validation:', {
+        hasCurrentCookies: !!currentCookies,
+        currentCookiesLength: currentCookies?.length || 0,
+        hasCurrentToken: !!currentToken,
+        currentTokenLength: currentToken?.length || 0,
+        source: cookiesOverride ? 'override' : (freshTokenInfo ? 'fresh store' : 'hook')
+      })
       
       // Si on a des cookies complets, les utiliser pour la validation
       if (currentCookies && currentCookies.trim().length > 0) {
@@ -321,38 +345,14 @@ export function TokenManager({ className = '' }: TokenManagerProps) {
       const fullCookiesToSave = newToken.trim() // Les cookies complets sont dans newToken
       await setToken(tokenToSave, validation, fullCookiesToSave)
       
-      // Sauvegarder également en base de données pour GitHub Actions
-      try {
-        const API_SECRET = process.env.NEXT_PUBLIC_API_SECRET || 'vinted_scraper_secure_2024'
-        const saveResponse = await fetch('/api/v1/admin/vinted/save-cookies', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'x-api-key': API_SECRET
-          },
-          body: JSON.stringify({
-            fullCookies: fullCookiesToSave,
-            notes: 'Saved from TokenManager UI'
-          })
-        })
-        
-        if (saveResponse.ok) {
-          console.log('✅ Cookies sauvegardés en base de données pour GitHub Actions')
-        } else {
-          const errorData = await saveResponse.json()
-          console.warn('⚠️ Erreur lors de la sauvegarde en DB:', errorData)
-          // Ne pas bloquer si la sauvegarde DB échoue, l'app fonctionne quand même
-        }
-      } catch (error) {
-        console.warn('⚠️ Erreur lors de la sauvegarde en DB (non bloquant):', error)
-        // Ne pas bloquer si la sauvegarde DB échoue
-      }
+      // Note: Les cookies sont stockés uniquement dans le localStorage via TokenStore
+      // La sauvegarde en base de données (vinted_credentials) était pour GitHub Actions (solution non retenue)
        
       console.log('✅ Cookies sauvegardés dans l\'application (token + cookies complets)')
       setIsEditing(false)
       setNewToken('')
       
-      alert('✅ Cookies mis à jour avec succès!\n\nL\'authentification Vinted est maintenant active dans l\'application et sauvegardée pour GitHub Actions !')
+      alert('✅ Cookies mis à jour avec succès!\n\nL\'authentification Vinted est maintenant active dans l\'application !')
       
     } catch (error) {
       console.error('Error saving token:', error)
@@ -377,13 +377,8 @@ export function TokenManager({ className = '' }: TokenManagerProps) {
     }
   }
 
-  const handleAutoFetchCookies = async () => {
-    if (!fullCookies) {
-      alert('❌ Aucun cookie disponible pour la récupération automatique')
-      return
-    }
-
-    setIsFetchingCookies(true)
+  const handleCookieFactory = async () => {
+    setIsCookieFactory(true)
     setRenewalLogs([])
     
     const logs: string[] = []
@@ -391,105 +386,22 @@ export function TokenManager({ className = '' }: TokenManagerProps) {
       const timestamp = new Date().toLocaleTimeString()
       logs.push(`[${timestamp}] ${message}`)
       setRenewalLogs([...logs])
-      logger.info(`🔄 Auto-fetch: ${message}`)
+      logger.info(`🏭 Cookie Factory: ${message}`)
     }
 
     try {
-      addLog('🔄 Début de la récupération automatique des cookies...')
-      addLog('📡 Requête HEAD vers /how_it_works...')
+      addLog('🏭 Cookie Factory: Génération de cookies frais...')
+      addLog('📚 Basé sur l\'article The Web Scraping Club #82')
+      addLog('🌐 Les endpoints mobiles (/api/v2/...) ne sont pas protégés par Datadome')
       
       const API_SECRET = process.env.NEXT_PUBLIC_API_SECRET || 'vinted_scraper_secure_2024'
       
-      const response = await fetch('/api/v1/cookies/fetch', {
+      const response = await fetch('/api/v1/admin/vinted/cookie-factory', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
           'x-api-key': API_SECRET
-        },
-        body: JSON.stringify({
-          fullCookies: fullCookies
-        })
-      })
-      
-      if (!response.ok) {
-        const errorData = await response.json().catch(() => ({ error: `HTTP ${response.status}` }))
-        throw new Error(errorData.error || `HTTP ${response.status}`)
-      }
-      
-      const result = await response.json()
-      
-      if (result.success) {
-        addLog('✅ Cookies récupérés avec succès!')
-        addLog(`📦 ${result.cookieCount || 0} cookies mis à jour`)
-        
-        if (result.extractedToken) {
-          addLog(`📝 Nouveau access token: ${result.extractedToken.substring(0, 20)}...`)
         }
-        
-        // Mettre à jour le token store avec les nouveaux cookies
-        await setToken(
-          result.extractedToken || token || '',
-          {
-            isValid: true,
-            details: {
-              statusCode: result.statusCode || 200,
-              message: `✅ Cookies mis à jour automatiquement - ${result.cookieCount || 0} cookies`
-            }
-          },
-          result.fullCookieString
-        )
-        
-        addLog('💾 Cookies sauvegardés dans le store')
-        addLog('✅ Processus terminé avec succès')
-        
-        // Re-vérifier le statut automatiquement après un court délai
-        addLog('🔄 Rafraîchissement automatique du statut...')
-        setTimeout(async () => {
-          await checkTokenStatus()
-          addLog('✅ Statut mis à jour automatiquement')
-        }, 1000)
-      } else {
-        addLog(`❌ Échec: ${result.error}`)
-        if (result.details) {
-          addLog(`   Détails: ${result.details}`)
-        }
-      }
-    } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : 'Erreur inconnue'
-      addLog(`❌ Erreur: ${errorMessage}`)
-      logger.error('Erreur lors de la récupération automatique des cookies', error as Error)
-    } finally {
-      setIsFetchingCookies(false)
-    }
-  }
-
-  const handleGenerateCookies = async () => {
-    setIsGeneratingCookies(true)
-    setRenewalLogs([])
-    
-    const logs: string[] = []
-    const addLog = (message: string) => {
-      const timestamp = new Date().toLocaleTimeString()
-      logs.push(`[${timestamp}] ${message}`)
-      setRenewalLogs([...logs])
-      logger.info(`🤖 Generate Cookies: ${message}`)
-    }
-
-    try {
-      addLog('🤖 Début de la génération des cookies via Puppeteer...')
-      addLog('🌐 Lancement du navigateur headless...')
-      
-      const API_SECRET = process.env.NEXT_PUBLIC_API_SECRET || 'vinted_scraper_secure_2024'
-      
-      const response = await fetch('/api/v1/admin/vinted/generate-cookies', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'x-api-key': API_SECRET
-        },
-        body: JSON.stringify({
-          autoSave: true // Sauvegarder automatiquement en DB
-        })
       })
       
       if (!response.ok) {
@@ -502,32 +414,115 @@ export function TokenManager({ className = '' }: TokenManagerProps) {
       if (result.success) {
         addLog('✅ Cookies générés avec succès!')
         
-        if (result.cookies) {
-          // result.cookies est une string (format: "cookie1=value1; cookie2=value2; ...")
-          const cookieString = typeof result.cookies === 'string' 
-            ? result.cookies 
-            : Object.entries(result.cookies)
-                .map(([key, value]) => `${key}=${value}`)
-                .join('; ')
+        // Afficher les tokens extraits
+        if (result.tokens) {
+          addLog('')
+          addLog('🔑 Tokens extraits:')
+          addLog('─'.repeat(60))
+          if (result.tokens.access_token_web) {
+            addLog(`✅ access_token_web: ${result.tokens.access_token_web.substring(0, 30)}...`)
+          } else {
+            addLog('❌ access_token_web: MANQUANT')
+          }
+          if (result.tokens.refresh_token_web) {
+            addLog(`✅ refresh_token_web: ${result.tokens.refresh_token_web.substring(0, 30)}...`)
+          } else {
+            addLog('❌ refresh_token_web: MANQUANT')
+          }
+          if (result.tokens.datadome) {
+            addLog(`✅ datadome: ${result.tokens.datadome.substring(0, 30)}...`)
+          } else {
+            addLog('❌ datadome: MANQUANT')
+          }
+          if (result.tokens.cf_clearance) {
+            addLog(`✅ cf_clearance: ${result.tokens.cf_clearance.substring(0, 30)}...`)
+          } else {
+            addLog('❌ cf_clearance: MANQUANT')
+          }
+          addLog('─'.repeat(60))
+          addLog('')
+        }
+        
+        // Afficher les résultats des tests
+        if (result.tests) {
+          addLog('🧪 Résultats des tests:')
+          addLog('─'.repeat(60))
           
-          // Compter le nombre de cookies
-          const cookieCount = cookieString.split(';').length
-          addLog(`🍪 ${cookieCount} cookies récupérés`)
-          addLog(`🔍 Validation des cookies générés (${cookieString.length} caractères)...`)
-          addLog(`🔍 Aperçu: ${cookieString.substring(0, 150)}...`)
+          // Test endpoint mobile
+          if (result.tests.mobileEndpoint) {
+            addLog('📱 Endpoint mobile (/api/v2/catalog/items):')
+            addLog(`   Status: HTTP ${result.tests.mobileEndpoint.statusCode}`)
+            addLog(`   ${result.tests.mobileEndpoint.message}`)
+            if (result.tests.mobileEndpoint.success) {
+              addLog('   ✅ Recommandé: Utiliser les endpoints mobiles (non protégés par Datadome)')
+            }
+          }
+          
+          addLog('')
+          
+          // Test endpoint web
+          if (result.tests.webEndpoint) {
+            addLog('🌐 Endpoint web (/web/api/core/catalog/items):')
+            addLog(`   Status: HTTP ${result.tests.webEndpoint.statusCode}`)
+            addLog(`   ${result.tests.webEndpoint.message}`)
+          }
+          
+          addLog('─'.repeat(60))
+          addLog('')
+        }
+        
+        // Avertissement si aucun cookie important n'est présent
+        const hasAnyImportantToken = result.tokens && (
+          result.tokens.access_token_web ||
+          result.tokens.refresh_token_web ||
+          result.tokens.datadome ||
+          result.tokens.cf_clearance
+        )
+        
+        if (!hasAnyImportantToken) {
+          addLog('')
+          addLog('⚠️ ATTENTION: Aucun cookie important récupéré!')
+          addLog('💡 Causes possibles:')
+          addLog('   1. Blocage temporaire suite à des rate limits (429)')
+          addLog('   2. IP temporairement bloquée par Vinted')
+          addLog('   3. Challenge Cloudflare/Datadome non résolu')
+          addLog('')
+          addLog('💡 Solutions (testées et fonctionnelles):')
+          addLog('   ✅ Partager la connexion mobile (hotspot) - Solution rapide!')
+          addLog('   ✅ Utiliser un VPN pour changer d\'IP')
+          addLog('   ⏳ Attendre 10-30 minutes avant de réessayer')
+          addLog('   ✅ Vérifier que VINTED_EMAIL et VINTED_PASSWORD sont configurés')
+          addLog('')
+          addLog('💡 Note: Le partage de connexion mobile fonctionne très bien car')
+          addLog('   cela change l\'IP et permet de contourner le blocage temporaire.')
+          addLog('')
+        }
+        
+        // Afficher les recommandations
+        if (result.recommendations) {
+          addLog('💡 Recommandations:')
+          if (result.recommendations.useMobileEndpoints) {
+            addLog('   ✅ Utiliser les endpoints mobiles (/api/v2/...) - Plus stables')
+          }
+          if (result.recommendations.hasAccessToken) {
+            addLog('   ✅ access_token_web disponible - Requêtes authentifiées possibles')
+          } else {
+            addLog('   ⚠️ access_token_web manquant - Configurer VINTED_EMAIL et VINTED_PASSWORD')
+          }
+          if (result.recommendations.hasRefreshToken) {
+            addLog('   ✅ refresh_token_web disponible - Renouvellement automatique possible')
+          }
+          addLog('')
+        }
+        
+        if (result.cookies) {
+          const cookieString = result.cookies
           
           // Valider les cookies
           const validation = await validateCookies(cookieString)
           
           if (validation.isValid) {
             addLog('✅ Cookies validés avec succès!')
-            
-            // Avertir si access_token_web est manquant
-            const hasAccessToken = validation.details?.hasAccessToken !== false
-            if (!hasAccessToken) {
-              addLog('⚠️ Note: access_token_web manquant (connexion requise pour requêtes authentifiées)')
-              addLog('💡 Les cookies Cloudflare/Datadome sont valides pour bypasser les protections')
-            }
             
             // Sauvegarder dans le store
             await setToken(
@@ -539,16 +534,26 @@ export function TokenManager({ className = '' }: TokenManagerProps) {
             addLog('💾 Cookies sauvegardés dans le store')
             addLog('✅ Processus terminé avec succès')
             
-            // Re-vérifier le statut automatiquement après un court délai
+            // Re-vérifier le statut automatiquement
             addLog('🔄 Rafraîchissement automatique du statut...')
             setTimeout(async () => {
-              await checkTokenStatus()
+              await checkTokenStatus(cookieString)
               addLog('✅ Statut mis à jour automatiquement')
-            }, 1000)
+            }, 1500)
             
-            const message = hasAccessToken
-              ? '✅ Cookies générés et sauvegardés avec succès!'
-              : '✅ Cookies Cloudflare/Datadome générés et sauvegardés!\n⚠️ Note: access_token_web manquant - connexion requise pour les requêtes authentifiées'
+            // Message de résumé
+            let message = '🏭 Cookie Factory: Cookies générés avec succès!\n\n'
+            if (result.recommendations) {
+              message += '💡 Recommandations:\n'
+              if (result.recommendations.useMobileEndpoints) {
+                message += '✅ Utiliser les endpoints mobiles (plus stables)\n'
+              }
+              if (result.recommendations.hasAccessToken) {
+                message += '✅ access_token_web disponible\n'
+              } else {
+                message += '⚠️ access_token_web manquant\n'
+              }
+            }
             alert(message)
           } else {
             addLog(`❌ Validation échouée: ${validation.error}`)
@@ -565,10 +570,10 @@ export function TokenManager({ className = '' }: TokenManagerProps) {
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Erreur inconnue'
       addLog(`❌ Erreur: ${errorMessage}`)
-      logger.error('Erreur lors de la génération des cookies', error as Error)
+      logger.error('Erreur lors de la génération via Cookie Factory', error as Error)
       alert(`❌ Erreur: ${errorMessage}`)
     } finally {
-      setIsGeneratingCookies(false)
+      setIsCookieFactory(false)
     }
   }
 
@@ -632,11 +637,12 @@ export function TokenManager({ className = '' }: TokenManagerProps) {
         addLog('✅ Processus terminé avec succès')
         
         // Re-vérifier le statut automatiquement après un court délai
+        // Passer les cookies directement pour éviter les problèmes de timing avec le store
         addLog('🔄 Rafraîchissement automatique du statut...')
         setTimeout(async () => {
-          await checkTokenStatus()
+          await checkTokenStatus(result.newCookies) // Passer les cookies directement
           addLog('✅ Statut mis à jour automatiquement')
-        }, 1000)
+        }, 1500) // Délai réduit car on passe les cookies directement
       } else {
         addLog(`❌ Échec: ${result.error}`)
         
@@ -779,13 +785,13 @@ export function TokenManager({ className = '' }: TokenManagerProps) {
       
       <CardContent className="space-y-4">
 
-        {/* Logs de renouvellement / Auto Fetch */}
+        {/* Logs de renouvellement / Cookie Factory */}
         {renewalLogs.length > 0 && (
           <Card className="border-blue-200 bg-blue-50/50 dark:bg-blue-950/20">
             <CardHeader className="pb-2">
               <CardTitle className="text-sm flex items-center gap-2">
                 <RefreshCw className="h-4 w-4" />
-                {isFetchingCookies ? 'Logs de récupération automatique' : isRenewing ? 'Logs de renouvellement OAuth2' : 'Logs'}
+                {isCookieFactory ? 'Logs Cookie Factory' : isRenewing ? 'Logs de renouvellement OAuth2' : 'Logs'}
               </CardTitle>
             </CardHeader>
             <CardContent>
@@ -796,7 +802,7 @@ export function TokenManager({ className = '' }: TokenManagerProps) {
                   </div>
                 ))}
               </div>
-              {renewalLogs.length > 0 && !isFetchingCookies && !isRenewing && (
+              {renewalLogs.length > 0 && !isCookieFactory && !isRenewing && (
                 <Button
                   variant="ghost"
                   size="sm"
@@ -810,24 +816,32 @@ export function TokenManager({ className = '' }: TokenManagerProps) {
           </Card>
         )}
         
-        {/* Guide de test pour Auto Fetch */}
+        {/* Guide d'utilisation du Cookie Factory */}
         {fullCookies ? (
           <div className="p-3 bg-green-50 border border-green-200 rounded-lg mb-4">
             <div className="flex items-start gap-2">
               <CheckCircle className="h-4 w-4 text-green-600 mt-0.5" />
               <div className="text-xs text-green-800 flex-1">
-                <strong>✅ Cookies configurés ! Vous pouvez maintenant utiliser le renouvellement automatique</strong>
+                <strong>✅ Cookies configurés ! Utilisez le Cookie Factory pour générer de nouveaux cookies</strong>
+                <p className="text-sm text-gray-600 mt-2">
+                  💡 <strong>Astuce:</strong> Si le Cookie Factory ne récupère aucun cookie, cela peut indiquer un blocage IP temporaire suite à des rate limits. 
+                  Solutions: partager votre connexion mobile (hotspot) ou utiliser un VPN pour changer d'IP.
+                </p>
                 <div className="mt-2 space-y-2">
                   <div className="bg-white p-2 rounded border border-green-200">
-                    <strong className="text-green-700">🔄 Deux méthodes de renouvellement disponibles :</strong>
+                    <strong className="text-green-700">🏭 Cookie Factory :</strong>
                     <ul className="list-disc list-inside mt-1 space-y-1 text-green-700">
-                      <li><strong>"Auto Fetch 🚀"</strong> : Récupère les cookies via requête HTTP (méthode du repository Discord bot)</li>
-                      <li><strong>"Force Refresh"</strong> : Utilise refresh_token_web via OAuth2 (si disponible)</li>
+                      <li>Génère automatiquement tous les cookies nécessaires (access_token_web, refresh_token_web, datadome, cf_clearance)</li>
+                      <li>Teste automatiquement les endpoints mobiles et web</li>
+                      <li>Basé sur l'article The Web Scraping Club #82</li>
                     </ul>
                   </div>
-                  <p className="text-green-600 font-semibold">
-                    🎯 <strong>Objectif :</strong> Configurer les cookies une seule fois, puis les renouveler automatiquement avec ces boutons !
-                  </p>
+                  {cookieMonitor.analysis?.refreshToken && (
+                    <div className="bg-white p-2 rounded border border-green-200">
+                      <strong className="text-green-700">🔄 Force Refresh :</strong>
+                      <p className="text-green-700 text-xs mt-1">Utilise refresh_token_web pour renouveler access_token_web automatiquement</p>
+                    </div>
+                  )}
                 </div>
               </div>
             </div>
@@ -837,12 +851,12 @@ export function TokenManager({ className = '' }: TokenManagerProps) {
             <div className="flex items-start gap-2">
               <AlertCircle className="h-4 w-4 text-blue-600 mt-0.5" />
               <div className="text-xs text-blue-800 flex-1">
-                <strong>📝 Pour tester "Auto Fetch", vous devez d'abord configurer des cookies :</strong>
+                <strong>📝 Pour générer des cookies automatiquement :</strong>
                 <ol className="list-decimal list-inside mt-1 space-y-1 text-blue-700">
-                  <li>Cliquez sur le bouton <strong>"Modifier"</strong> ci-dessus</li>
-                  <li>Collez vos cookies Vinted (depuis DevTools ou l'extension navigateur)</li>
-                  <li>Cliquez sur <strong>"Sauvegarder"</strong></li>
-                  <li>Une fois les cookies configurés, le bouton <strong>"Auto Fetch 🚀"</strong> apparaîtra</li>
+                  <li>Cliquez sur le bouton <strong>"Cookie Factory 🏭"</strong> ci-dessus</li>
+                  <li>Le système générera automatiquement tous les cookies nécessaires via Puppeteer</li>
+                  <li>Assurez-vous d'avoir configuré <code className="bg-blue-100 px-1 rounded">VINTED_EMAIL</code> et <code className="bg-blue-100 px-1 rounded">VINTED_PASSWORD</code> dans votre <code className="bg-blue-100 px-1 rounded">.env.local</code> pour obtenir access_token_web</li>
+                  <li>Les cookies seront automatiquement testés et sauvegardés</li>
                 </ol>
               </div>
             </div>
@@ -893,7 +907,16 @@ export function TokenManager({ className = '' }: TokenManagerProps) {
             <Button
               variant="outline"
               size="sm"
-              onClick={checkTokenStatus}
+              onClick={async () => {
+                console.log('🔄 Bouton refresh cliqué')
+                console.log('📊 État actuel:', {
+                  hasFullCookies: !!fullCookies,
+                  fullCookiesLength: fullCookies?.length || 0,
+                  hasToken: !!token,
+                  isLoading
+                })
+                await checkTokenStatus()
+              }}
               disabled={isLoading}
               title="Vérifier le statut du token"
             >
@@ -902,27 +925,14 @@ export function TokenManager({ className = '' }: TokenManagerProps) {
             <Button
               variant="outline"
               size="sm"
-              onClick={handleGenerateCookies}
-              disabled={isGeneratingCookies}
-              className="bg-purple-50 text-purple-700 hover:bg-purple-100 border-purple-300"
-              title="Générer automatiquement les cookies via Puppeteer (bypass Cloudflare/Datadome)"
+              onClick={handleCookieFactory}
+              disabled={isCookieFactory}
+              className="bg-blue-50 text-blue-700 hover:bg-blue-100 border-blue-300"
+              title="Cookie Factory: Génère des cookies frais et teste automatiquement les endpoints mobiles/web (basé sur The Web Scraping Club #82)"
             >
-              <RefreshCw className={`h-3 w-3 mr-1 ${isGeneratingCookies ? 'animate-spin' : ''}`} />
-              {isGeneratingCookies ? 'Génération...' : 'Generate Cookies 🤖'}
+              <RefreshCw className={`h-3 w-3 mr-1 ${isCookieFactory ? 'animate-spin' : ''}`} />
+              {isCookieFactory ? 'Factory...' : 'Cookie Factory 🏭'}
             </Button>
-            {fullCookies && (
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={handleAutoFetchCookies}
-                disabled={isFetchingCookies}
-                className="bg-green-50 text-green-700 hover:bg-green-100 border-green-300"
-                title="Récupérer automatiquement les cookies depuis Vinted via requête HEAD vers /how_it_works (méthode automatique - pas besoin d'action manuelle)"
-              >
-                <RefreshCw className={`h-3 w-3 mr-1 ${isFetchingCookies ? 'animate-spin' : ''}`} />
-                {isFetchingCookies ? 'Récupération...' : 'Auto Fetch 🚀'}
-              </Button>
-            )}
             {cookieMonitor.analysis?.refreshToken && (
               <Button
                 variant="outline"

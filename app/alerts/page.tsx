@@ -11,7 +11,7 @@ import { Checkbox } from '@/components/ui/checkbox'
 import { Navigation } from '@/components/layout/Navigation'
 import { useToast } from '@/components/ui/toast'
 import { checkAlerts } from '@/lib/utils/alertChecker'
-import { Bell, Plus, X, Edit, Trash2, CheckCircle2, XCircle, AlertCircle, RefreshCw, Clock, ExternalLink, Package, Heart, Eye, MapPin, Calendar, Star, Zap, Truck } from 'lucide-react'
+import { Bell, Plus, X, Edit, Trash2, CheckCircle2, XCircle, AlertCircle, RefreshCw, Clock, ExternalLink, Package, Heart, Eye, MapPin, Calendar, Star, Zap, Truck, Upload, FileText } from 'lucide-react'
 import Link from 'next/link'
 import Image from 'next/image'
 import type { ApiItem } from '@/lib/types/core'
@@ -116,6 +116,10 @@ interface CheckResult {
 
 export default function AlertsPage() {
   const [showCreateForm, setShowCreateForm] = useState(false)
+  const [showImportDialog, setShowImportDialog] = useState(false)
+  const [importText, setImportText] = useState('')
+  const [importPreview, setImportPreview] = useState<{ alerts: any[]; errors: any[]; duplicates: any[] } | null>(null)
+  const [isParsing, setIsParsing] = useState(false)
   const [editingAlert, setEditingAlert] = useState<PriceAlert | null>(null)
   const [newAlert, setNewAlert] = useState({
     game_title: '',
@@ -350,6 +354,103 @@ export default function AlertsPage() {
     }
   })
 
+  // Import mutations
+  const parseImportMutation = useMutation({
+    mutationFn: async (text: string) => {
+      const response = await fetch('/api/v1/alerts/import', {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-api-key': API_SECRET
+        },
+        body: JSON.stringify({ text })
+      })
+
+      if (!response.ok) {
+        const error = await response.json()
+        throw new Error(error.error || 'Failed to parse import')
+      }
+
+      return response.json()
+    },
+    onSuccess: (data) => {
+      setImportPreview({
+        alerts: data.alerts || [],
+        errors: data.errorsList || [],
+        duplicates: data.duplicatesList || []
+      })
+    },
+    onError: (error: Error) => {
+      toast.error(error.message)
+    }
+  })
+
+  const importMutation = useMutation({
+    mutationFn: async (alerts: any[]) => {
+      const response = await fetch('/api/v1/alerts/import', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-api-key': API_SECRET
+        },
+        body: JSON.stringify({ alerts, skipDuplicates: true })
+      })
+
+      if (!response.ok) {
+        const error = await response.json()
+        throw new Error(error.error || 'Failed to import alerts')
+      }
+
+      return response.json()
+    },
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ['price-alerts'] })
+      setShowImportDialog(false)
+      setImportText('')
+      setImportPreview(null)
+      toast.success(`✅ ${data.created} alertes créées${data.skipped > 0 ? `, ${data.skipped} déjà existantes` : ''}${data.duplicates > 0 ? `, ${data.duplicates} doublons ignorés` : ''}`)
+    },
+    onError: (error: Error) => {
+      toast.error(error.message)
+    }
+  })
+
+  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+
+    const reader = new FileReader()
+    reader.onload = (event) => {
+      const text = event.target?.result as string
+      setImportText(text)
+      handleParseImport(text)
+    }
+    reader.readAsText(file)
+  }
+
+  const handleParseImport = (text: string) => {
+    if (!text.trim()) {
+      toast.warning('Le texte est vide')
+      return
+    }
+
+    setIsParsing(true)
+    parseImportMutation.mutate(text, {
+      onSettled: () => {
+        setIsParsing(false)
+      }
+    })
+  }
+
+  const handleImportAlerts = () => {
+    if (!importPreview || importPreview.alerts.length === 0) {
+      toast.warning('Aucune alerte valide à importer')
+      return
+    }
+
+    importMutation.mutate(importPreview.alerts)
+  }
+
   const handleCreate = (e: React.FormEvent) => {
     e.preventDefault()
     if (!newAlert.game_title.trim() || !newAlert.max_price) {
@@ -393,6 +494,14 @@ export default function AlertsPage() {
               >
                 <RefreshCw className={`h-4 w-4 mr-2 ${isChecking ? 'animate-spin' : ''}`} />
                 {isChecking ? 'Checking...' : 'Check Now'}
+              </Button>
+              <Button
+                onClick={() => setShowImportDialog(true)}
+                variant="outline"
+                className="border-purple-600 text-purple-600 hover:bg-purple-50"
+              >
+                <Upload className="h-4 w-4 mr-2" />
+                Import
               </Button>
               <Button
                 onClick={() => setShowCreateForm(!showCreateForm)}
@@ -809,6 +918,179 @@ export default function AlertsPage() {
                     </Button>
                   </div>
                 </form>
+              </CardContent>
+            </Card>
+          )}
+
+          {/* Import Dialog */}
+          {showImportDialog && (
+            <Card className="border-purple-200 bg-purple-50/30">
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <FileText className="h-5 w-5 text-purple-600" />
+                  Import Alertes depuis un fichier
+                </CardTitle>
+                <CardDescription>
+                  Collez votre liste ou importez un fichier .txt. Format: "Nom du jeu - Prix€"
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                {/* File Upload */}
+                <div>
+                  <Label htmlFor="file-upload">Importer un fichier</Label>
+                  <Input
+                    id="file-upload"
+                    type="file"
+                    accept=".txt,.text"
+                    onChange={handleFileUpload}
+                    className="mt-1"
+                  />
+                  <p className="text-xs text-gray-500 mt-1">
+                    Format attendu: "Nom du jeu - Prix€" (une ligne par alerte)
+                  </p>
+                </div>
+
+                {/* Text Input */}
+                <div>
+                  <Label htmlFor="import-text">Ou collez votre liste ici</Label>
+                  <textarea
+                    id="import-text"
+                    value={importText}
+                    onChange={(e) => setImportText(e.target.value)}
+                    placeholder={`Valfaris - 35€
+Gravity Circuit Recherche - 39€
+Chasm - 50€
+Blossom Tales - 150 €
+Blossom Tales II - 80€`}
+                    className="w-full min-h-[200px] p-3 border border-gray-300 rounded-md font-mono text-sm mt-1"
+                  />
+                </div>
+
+                {/* Parse Button */}
+                <Button
+                  onClick={() => handleParseImport(importText)}
+                  disabled={!importText.trim() || isParsing}
+                  className="w-full"
+                >
+                  {isParsing ? (
+                    <>
+                      <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
+                      Analyse en cours...
+                    </>
+                  ) : (
+                    <>
+                      <FileText className="h-4 w-4 mr-2" />
+                      Analyser la liste
+                    </>
+                  )}
+                </Button>
+
+                {/* Preview */}
+                {importPreview && (
+                  <div className="space-y-4 border-t pt-4">
+                    <div className="grid grid-cols-3 gap-4 text-sm">
+                      <div className="text-center p-3 bg-green-50 rounded-lg">
+                        <div className="text-2xl font-bold text-green-600">{importPreview.alerts.length}</div>
+                        <div className="text-gray-600">Alertes valides</div>
+                      </div>
+                      {importPreview.duplicates.length > 0 && (
+                        <div className="text-center p-3 bg-yellow-50 rounded-lg">
+                          <div className="text-2xl font-bold text-yellow-600">{importPreview.duplicates.length}</div>
+                          <div className="text-gray-600">Doublons</div>
+                        </div>
+                      )}
+                      {importPreview.errors.length > 0 && (
+                        <div className="text-center p-3 bg-red-50 rounded-lg">
+                          <div className="text-2xl font-bold text-red-600">{importPreview.errors.length}</div>
+                          <div className="text-gray-600">Erreurs</div>
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Valid Alerts Preview */}
+                    {importPreview.alerts.length > 0 && (
+                      <div>
+                        <h4 className="font-semibold mb-2 text-green-700">Alertes à créer:</h4>
+                        <div className="max-h-[200px] overflow-y-auto space-y-1 text-sm">
+                          {importPreview.alerts.map((alert, idx) => (
+                            <div key={idx} className="p-2 bg-white rounded border border-green-200">
+                              <div className="flex items-center justify-between">
+                                <span className="font-medium">{alert.gameTitle}</span>
+                                <Badge className="bg-green-600">≤ {alert.maxPrice}€</Badge>
+                              </div>
+                              {alert.platform && (
+                                <div className="text-xs text-gray-500 mt-1">Plateforme: {alert.platform}</div>
+                              )}
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Errors */}
+                    {importPreview.errors.length > 0 && (
+                      <div>
+                        <h4 className="font-semibold mb-2 text-red-700">Erreurs de parsing:</h4>
+                        <div className="max-h-[150px] overflow-y-auto space-y-1 text-sm">
+                          {importPreview.errors.map((error, idx) => (
+                            <div key={idx} className="p-2 bg-red-50 rounded border border-red-200 text-red-700">
+                              <div className="font-medium">Ligne {error.line}: {error.content}</div>
+                              <div className="text-xs mt-1">{error.error}</div>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Duplicates */}
+                    {importPreview.duplicates.length > 0 && (
+                      <div>
+                        <h4 className="font-semibold mb-2 text-yellow-700">Doublons (seront ignorés):</h4>
+                        <div className="max-h-[150px] overflow-y-auto space-y-1 text-sm">
+                          {importPreview.duplicates.map((dup, idx) => (
+                            <div key={idx} className="p-2 bg-yellow-50 rounded border border-yellow-200 text-yellow-700">
+                              {dup.gameTitle} - {dup.maxPrice}€
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Import Button */}
+                    {importPreview.alerts.length > 0 && (
+                      <Button
+                        onClick={handleImportAlerts}
+                        disabled={importMutation.isPending}
+                        className="w-full bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700"
+                      >
+                        {importMutation.isPending ? (
+                          <>
+                            <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
+                            Import en cours...
+                          </>
+                        ) : (
+                          <>
+                            <Upload className="h-4 w-4 mr-2" />
+                            Créer {importPreview.alerts.length} alerte{importPreview.alerts.length > 1 ? 's' : ''}
+                          </>
+                        )}
+                      </Button>
+                    )}
+                  </div>
+                )}
+
+                {/* Close Button */}
+                <Button
+                  variant="outline"
+                  onClick={() => {
+                    setShowImportDialog(false)
+                    setImportText('')
+                    setImportPreview(null)
+                  }}
+                  className="w-full"
+                >
+                  Fermer
+                </Button>
               </CardContent>
             </Card>
           )}

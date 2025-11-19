@@ -3,7 +3,7 @@
 import { useState } from 'react'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
-import { Search, Package, Settings, Database, Bell, BarChart3, Menu, X, LayoutDashboard, Home as HomeIcon } from 'lucide-react'
+import { Search, Package, Settings, Database, Bell, Menu, X, LayoutDashboard, Home as HomeIcon } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { ThemeToggle } from '@/components/ui/theme-toggle'
 import { Button } from '@/components/ui/button'
@@ -38,12 +38,6 @@ const navItems = [
     label: 'Alerts',
     icon: Bell,
     description: 'Price alerts'
-  },
-  {
-    href: '/stats',
-    label: 'Stats',
-    icon: BarChart3,
-    description: 'Analytics'
   },
   {
     href: '/settings',

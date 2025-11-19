@@ -55,15 +55,9 @@ Vercel est la plateforme officielle de Next.js, c'est le plus simple et le plus 
    - Vercel vous donne une URL : `https://votre-app.vercel.app`
    - Vos API routes sont accessibles : `https://votre-app.vercel.app/api/v1/...`
 
-### Configuration GitHub Actions
+### Note sur les alertes automatiques
 
-Une fois déployé sur Vercel, mettez à jour votre secret GitHub :
-
-1. Allez dans GitHub → Settings → Secrets and variables → Actions
-2. Ajoutez/modifiez le secret `API_BASE_URL` :
-   ```
-   API_BASE_URL=https://votre-app.vercel.app
-   ```
+Les alertes peuvent être vérifiées via l'interface web ou via l'API `/api/v1/alerts/check`.
 
 ## 🚀 Option 2 : Railway (Alternative)
 
@@ -133,9 +127,9 @@ VINTED_ACCESS_TOKEN=...
      -d '{"token": "test"}'
    ```
 
-3. **Tester depuis GitHub Actions**
-   - Le workflow devrait maintenant pouvoir appeler votre API déployée
-   - Vérifiez les logs dans GitHub Actions
+3. **Tester les alertes**
+   - Utilisez l'interface web pour vérifier les alertes
+   - Ou appelez directement `/api/v1/alerts/check` avec votre API key
 
 ## 🐛 Dépannage
 
@@ -148,7 +142,7 @@ VINTED_ACCESS_TOKEN=...
 - Assurez-vous d'utiliser les clés de **production** (pas de développement)
 
 ### Erreur : "Unauthorized" sur les API routes
-- Vérifiez que `API_SECRET` est identique dans Vercel et GitHub Actions
+- Vérifiez que `API_SECRET` est bien configuré dans Vercel
 - Vérifiez que le header `x-api-key` est bien envoyé
 
 ### Build échoue
@@ -167,16 +161,12 @@ VINTED_ACCESS_TOKEN=...
 
 ## 🔄 Mise à jour après déploiement
 
-Après avoir déployé, mettez à jour votre workflow GitHub Actions :
+Après avoir déployé, vous pouvez utiliser l'API pour vérifier les alertes :
 
-```yaml
-# Dans .github/workflows/alerts-worker.yml
-env:
-  API_BASE_URL: https://votre-app.vercel.app  # Votre URL Vercel
+```bash
+# Exemple d'appel à l'API d'alertes
+curl -X POST https://votre-app.vercel.app/api/v1/alerts/check \
+  -H "Content-Type: application/json" \
+  -H "x-api-key: votre_api_secret"
 ```
-
-Et ajoutez ce secret dans GitHub :
-- Repository → Settings → Secrets → Actions
-- Nom : `API_BASE_URL`
-- Valeur : `https://votre-app.vercel.app`
 

@@ -515,10 +515,10 @@ export async function searchAllPagesWithFullSession(
 
     logger.scrape.page(currentPage, totalPages, perPage)
 
-    // DÉLAI ANTI-DÉTECTION avant chaque requête
+    // DÉLAI ANTI-DÉTECTION avant chaque requête (augmenté pour éviter les rate limits)
     if (currentPage > 1) {
-      const delay = 1000 + Math.random() * 500 // 1-1.5s aléatoire
-      // logger.debug(`⏳ Délai anti-détection: ${Math.round(delay)}ms`)
+      const delay = 7500 // 7,5 secondes entre chaque page pour éviter les 429
+      logger.info(`⏳ Délai de ${delay / 1000}s avant la page ${currentPage}/${totalPages} (pour éviter les rate limits)`)
       await new Promise(resolve => setTimeout(resolve, delay))
     }
 
@@ -549,11 +549,9 @@ export async function searchAllPagesWithFullSession(
     currentPage++
 
     // logger.info(`📊 Total accumulé: ${allItems.length}/${limit}`)
-
-    if (hasMore && allItems.length < limit) {
-      // Délai entre les pages pour éviter le rate limiting
-      await new Promise(resolve => setTimeout(resolve, 500))
-    }
+    
+    // Note: Le délai de 5 secondes est déjà appliqué au début de la boucle (avant currentPage > 1)
+    // Pas besoin de délai supplémentaire ici
   }
 
   // STRATÉGIE SIMPLIFIÉE : Filtrage intelligent SANS enrichissement

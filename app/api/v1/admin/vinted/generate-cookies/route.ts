@@ -78,6 +78,81 @@ export async function POST(request: NextRequest) {
 
     logger.info('✅ Cookies générés avec succès')
 
+    // Test automatique des cookies générés
+    let testResult = {
+      hasAccessToken: false,
+      accessTokenValue: null as string | null,
+      apiTest: {
+        success: false,
+        statusCode: null as number | null,
+        message: ''
+      }
+    }
+
+    if (result.cookies) {
+      // Vérifier si access_token_web est présent
+      const hasAccessToken = result.cookies.includes('access_token_web=')
+      testResult.hasAccessToken = hasAccessToken
+      
+      if (hasAccessToken) {
+        // Extraire la valeur du token
+        const tokenMatch = result.cookies.match(/access_token_web=([^;]+)/)
+        if (tokenMatch) {
+          testResult.accessTokenValue = tokenMatch[1]
+          logger.info('✅ access_token_web trouvé dans les cookies générés')
+        }
+      } else {
+        logger.warn('⚠️ access_token_web non trouvé dans les cookies générés')
+      }
+
+      // Tester les cookies avec une requête API simple
+      try {
+        logger.info('🧪 Test des cookies avec une requête API...')
+        const { createFullSessionFromCookies } = await import('@/lib/scrape/fullSessionManager')
+        const { buildVintedApiHeaders } = await import('@/lib/scrape/fullSessionManager')
+        
+        const session = createFullSessionFromCookies(result.cookies)
+        const headers = buildVintedApiHeaders(session)
+        
+        // Faire une requête test simple
+        const testUrl = 'https://www.vinted.fr/api/v2/catalog/items?search_text=test&per_page=1&page=1'
+        const controller = new AbortController()
+        const timeoutId = setTimeout(() => controller.abort(), 10000)
+        
+        const testResponse = await fetch(testUrl, {
+          method: 'GET',
+          headers,
+          signal: controller.signal
+        })
+        
+        clearTimeout(timeoutId)
+        
+        testResult.apiTest.statusCode = testResponse.status
+        testResult.apiTest.success = testResponse.ok || testResponse.status === 429 // 429 = rate limit mais cookies valides
+        
+        if (testResult.apiTest.success) {
+          testResult.apiTest.message = '✅ Les cookies fonctionnent correctement avec l\'API Vinted'
+          logger.info('✅ Test API réussi:', testResponse.status)
+        } else if (testResponse.status === 403) {
+          if (hasAccessToken) {
+            testResult.apiTest.message = '⚠️ 403 Forbidden - Les cookies Cloudflare fonctionnent mais access_token_web pourrait être invalide ou expiré'
+          } else {
+            testResult.apiTest.message = '⚠️ 403 Forbidden - Les cookies Cloudflare fonctionnent mais access_token_web est manquant (connexion requise)'
+          }
+          logger.warn('⚠️ Test API: 403 Forbidden')
+        } else if (testResponse.status === 429) {
+          testResult.apiTest.message = '✅ Rate limit détecté mais les cookies sont valides'
+          logger.info('ℹ️ Test API: Rate limit (cookies valides)')
+        } else {
+          testResult.apiTest.message = `❌ Erreur ${testResponse.status}: ${testResponse.statusText}`
+          logger.warn(`⚠️ Test API échoué: ${testResponse.status}`)
+        }
+      } catch (error) {
+        testResult.apiTest.message = `❌ Erreur lors du test: ${error instanceof Error ? error.message : 'Unknown error'}`
+        logger.warn('⚠️ Erreur lors du test API:', error as Error)
+      }
+    }
+
     // Sauvegarder en DB si demandé
     if (autoSave && result.cookies) {
       try {
@@ -111,6 +186,7 @@ export async function POST(request: NextRequest) {
       message: 'Cookies generated successfully',
       cookies: result.cookies,
       details: result.details,
+      test: testResult,
       note: autoSave 
         ? 'Cookies have been automatically saved to database'
         : 'Cookies generated but not saved (use autoSave=true to save)'

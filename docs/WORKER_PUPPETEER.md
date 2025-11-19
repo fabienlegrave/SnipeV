@@ -87,7 +87,7 @@ CHECK_INTERVAL_MINUTES=10 node scripts/alertsWorkerPuppeteer.js
 ### Cycle de vérification
 
 1. **Récupération des cookies** :
-   - Essaie d'abord de récupérer depuis la DB (`vinted_credentials`)
+   - Génère automatiquement les cookies via Puppeteer (plus besoin de DB)
    - Si pas disponibles ou expirés, génère via Puppeteer
    - Sauvegarde automatiquement en DB
 

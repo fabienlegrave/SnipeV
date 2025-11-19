@@ -375,12 +375,6 @@ export default function DashboardPage() {
                     Manage Alerts
                   </Link>
                 </Button>
-                <Button variant="outline" className="w-full justify-start" asChild>
-                  <Link href="/stats">
-                    <TrendingUp className="h-4 w-4 mr-2" />
-                    View Statistics
-                  </Link>
-                </Button>
               </CardContent>
             </Card>
           </div>

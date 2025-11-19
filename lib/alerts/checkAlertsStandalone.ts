@@ -9,7 +9,7 @@ import { searchAllPagesWithFullSession } from '@/lib/scrape/searchCatalogWithFul
 import { createFullSessionFromCookies } from '@/lib/scrape/fullSessionManager'
 import { extractSmartKeywords } from '@/lib/scrape/smartRelevanceScorer'
 import { vintedItemToApiItem } from '@/lib/utils/vintedItemToApiItem'
-import { sendTelegramNotification, getTelegramConfig } from '@/lib/notifications/telegram'
+import { sendTelegramNotificationGrouped, getTelegramConfig } from '@/lib/notifications/telegram'
 import { upsertItemsToDb } from '@/lib/utils/upsertItems'
 import type { VintedItem, ApiItem } from '@/lib/types/core'
 
@@ -288,6 +288,12 @@ export async function checkAlertsStandalone(fullCookies: string): Promise<CheckA
     }
 
     logger.info(`📋 ${alerts.length} alertes actives à vérifier`)
+    
+    // Calculer le temps estimé (2 minutes par alerte après la première)
+    const estimatedMinutes = alerts.length > 1 ? (alerts.length - 1) * 2 : 0
+    if (estimatedMinutes > 0) {
+      logger.info(`⏱️ Temps estimé: ~${estimatedMinutes} minute${estimatedMinutes > 1 ? 's' : ''} (2 minutes d'intervalle entre chaque alerte pour éviter les rate limits)`)
+    }
 
     // 2. Créer la session
     const session = createFullSessionFromCookies(fullCookies)
@@ -304,8 +310,22 @@ export async function checkAlertsStandalone(fullCookies: string): Promise<CheckA
     let skippedTitle = 0
     let skippedPlatform = 0
 
-    for (const alert of alerts) {
-      logger.info(`🔍 Vérification alerte: "${alert.game_title}" (platform: ${alert.platform || 'any'}, max: ${alert.max_price}€)`)
+    // Traiter les alertes séquentiellement avec un délai de 2 minutes entre chaque
+    for (let i = 0; i < alerts.length; i++) {
+      const alert = alerts[i]
+      
+      // Ajouter un délai de 2 minutes entre chaque alerte (sauf pour la première)
+      if (i > 0) {
+        const delayMs = 2 * 60 * 1000 // 2 minutes
+        logger.info(`⏳ Attente de ${delayMs / 1000}s avant de traiter la prochaine alerte (${i + 1}/${alerts.length})...`)
+        await new Promise(resolve => setTimeout(resolve, delayMs))
+      }
+      
+      logger.info(`🔍 Vérification alerte ${i + 1}/${alerts.length}: "${alert.game_title}" (platform: ${alert.platform || 'any'}, max: ${alert.max_price}€)`)
+      
+      // Collecter les matches pour cette alerte spécifique
+      const alertMatches: AlertMatch[] = []
+      const alertItemsToUpsert: (ApiItem | VintedItem)[] = []
       
       try {
         // Utiliser l'endpoint /api/v2/catalog/items comme la recherche normale
@@ -399,16 +419,19 @@ export async function checkAlertsStandalone(fullCookies: string): Promise<CheckA
           
           if (matchResult.matches) {
             // Vérifier si cet item n'a pas déjà été ajouté (déduplication par ID)
-            const existingMatch = matches.find(m => m.item.id === item.id)
+            const existingMatch = alertMatches.find(m => m.item.id === item.id)
             if (!existingMatch) {
-              matches.push({
+              const match: AlertMatch = {
                 alertId: alert.id,
                 alertTitle: alert.game_title,
                 item,
                 matchReason: matchResult.reason
-              })
+              }
+              alertMatches.push(match)
+              matches.push(match) // Garder aussi dans la liste globale pour les stats
 
               // Ajouter l'item à la liste des items à upsert
+              alertItemsToUpsert.push(item)
               itemsToUpsert.push(item)
             } else {
               logger.debug(`🔄 Item ${item.id} (${item.title}) déjà dans les matches, ignoré`)
@@ -432,6 +455,79 @@ export async function checkAlertsStandalone(fullCookies: string): Promise<CheckA
             }
           }
         }
+
+        // Upsert immédiatement les items de cette alerte
+        if (alertItemsToUpsert.length > 0) {
+          logger.info(`💾 Upsert de ${alertItemsToUpsert.length} item(s) pour l'alerte "${alert.game_title}"...`)
+          const upsertResult = await upsertItemsToDb(alertItemsToUpsert)
+          if (upsertResult.success) {
+            logger.info(`✅ ${upsertResult.upserted} item(s) sauvegardé(s) pour l'alerte "${alert.game_title}"`)
+          } else {
+            logger.warn(`⚠️ Erreurs lors de l'upsert pour l'alerte "${alert.game_title}": ${upsertResult.errors.length} erreur(s)`)
+          }
+        }
+
+        // Envoyer immédiatement la notification Telegram pour cette alerte si des nouveaux items ont été trouvés
+        if (alertMatches.length > 0) {
+          const newItemsForAlert: Array<{ item: ApiItem; matchReason: string }> = []
+          
+          for (const match of alertMatches) {
+            try {
+              // Vérifier si ce match existe déjà dans la base de données
+              const { data: existingDbMatch } = await supabase
+                .from('alert_matches')
+                .select('id')
+                .eq('alert_id', match.alertId)
+                .eq('item_id', match.item.id)
+                .single()
+
+              const isNewItem = !existingDbMatch
+
+              // Enregistrer le match dans la table de liaison
+              const { error: matchError } = await supabase
+                .from('alert_matches')
+                .upsert({
+                  alert_id: match.alertId,
+                  item_id: match.item.id,
+                  match_reason: match.matchReason
+                }, {
+                  onConflict: 'alert_id,item_id',
+                  ignoreDuplicates: false
+                })
+
+              if (matchError) {
+                logger.warn(`⚠️ Failed to save alert match for alert ${match.alertId} / item ${match.item.id}`, matchError)
+              } else if (isNewItem) {
+                // Convertir l'item en ApiItem si nécessaire
+                const apiItem: ApiItem = 'price_amount' in match.item
+                  ? vintedItemToApiItem(match.item as VintedItem)
+                  : match.item as ApiItem
+                
+                newItemsForAlert.push({
+                  item: apiItem,
+                  matchReason: match.matchReason
+                })
+              }
+            } catch (error) {
+              logger.warn(`⚠️ Error saving alert match for alert ${match.alertId} / item ${match.item.id}`, error as Error)
+            }
+          }
+
+          // Envoyer la notification Telegram groupée immédiatement pour cette alerte
+          if (newItemsForAlert.length > 0) {
+            const telegramConfig = getTelegramConfig()
+            if (telegramConfig) {
+              logger.info(`📱 Envoi de la notification Telegram pour l'alerte "${alert.game_title}" avec ${newItemsForAlert.length} nouveau(x) item(s)...`)
+              await sendTelegramNotificationGrouped(
+                alert.game_title,
+                newItemsForAlert,
+                telegramConfig
+              )
+            } else {
+              logger.debug('ℹ️ Configuration Telegram non disponible, notification non envoyée')
+            }
+          }
+        }
       } catch (error) {
         logger.error(`❌ Erreur lors de la vérification de l'alerte "${alert.game_title}"`, error as Error)
         // Continuer avec les autres alertes même si une échoue
@@ -440,67 +536,8 @@ export async function checkAlertsStandalone(fullCookies: string): Promise<CheckA
 
     logger.info(`📊 Statistiques de vérification: ${totalChecked} items vérifiés - ${skippedUnavailable} non-disponibles, ${skippedPrice} prix trop élevés, ${skippedPlatform} plateforme non-match, ${skippedTitle} titre non-match, ${matches.length} matches`)
 
-    // 4. Upsert tous les items dans vinted_items AVANT de créer les alert_matches
-    if (itemsToUpsert.length > 0) {
-      logger.info(`💾 Upsert de ${itemsToUpsert.length} items dans vinted_items...`)
-      const upsertResult = await upsertItemsToDb(itemsToUpsert)
-      if (upsertResult.success) {
-        logger.info(`✅ ${upsertResult.upserted} items upsertés avec succès`)
-      } else {
-        logger.warn(`⚠️ Erreurs lors de l'upsert: ${upsertResult.errors.length} erreur(s)`)
-      }
-    }
-
-    // 5. Créer les entrées dans alert_matches et envoyer les notifications Telegram
-    for (const match of matches) {
-      try {
-        // Vérifier si ce match existe déjà dans la base de données
-        const { data: existingDbMatch } = await supabase
-          .from('alert_matches')
-          .select('id')
-          .eq('alert_id', match.alertId)
-          .eq('item_id', match.item.id)
-          .single()
-
-        const isNewItem = !existingDbMatch
-
-        // Enregistrer le match dans la table de liaison
-        const { error: matchError } = await supabase
-          .from('alert_matches')
-          .upsert({
-            alert_id: match.alertId,
-            item_id: match.item.id,
-            match_reason: match.matchReason
-          }, {
-            onConflict: 'alert_id,item_id',
-            ignoreDuplicates: false
-          })
-
-        if (matchError) {
-          logger.warn(`⚠️ Failed to save alert match for alert ${match.alertId} / item ${match.item.id}`, matchError)
-        } else if (isNewItem) {
-          // Envoyer une notification Telegram uniquement pour les nouveaux items
-          const telegramConfig = getTelegramConfig()
-          if (telegramConfig) {
-            // Convertir l'item en ApiItem si nécessaire
-            const apiItem: ApiItem = 'price_amount' in match.item
-              ? vintedItemToApiItem(match.item as VintedItem)
-              : match.item as ApiItem
-            
-            await sendTelegramNotification(
-              apiItem,
-              match.alertTitle,
-              match.matchReason,
-              telegramConfig
-            )
-          } else {
-            logger.debug('ℹ️ Configuration Telegram non disponible, notification non envoyée')
-          }
-        }
-      } catch (error) {
-        logger.warn(`⚠️ Error saving alert match for alert ${match.alertId} / item ${match.item.id}`, error as Error)
-      }
-    }
+    // Note: Les items sont maintenant upsertés et les notifications envoyées immédiatement après chaque alerte
+    // dans la boucle principale ci-dessus. Cette section est conservée pour les stats finales uniquement.
 
     logger.info(`🎯 Vérification terminée: ${matches.length} match(s) trouvé(s) pour ${alerts.length} alerte(s)`)
     

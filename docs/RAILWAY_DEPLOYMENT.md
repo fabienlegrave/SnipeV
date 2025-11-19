@@ -76,9 +76,9 @@ curl -X POST https://votre-app.up.railway.app/api/v1/admin/vinted/generate-cooki
   -d '{"autoSave": true}'
 ```
 
-## ⚙️ Configuration GitHub Actions
+## ⚙️ Configuration des alertes
 
-Si vous utilisez GitHub Actions pour les alertes, mettez à jour `API_BASE_URL` :
+Pour utiliser les alertes, vous pouvez appeler l'API directement :
 
 ```yaml
 env:

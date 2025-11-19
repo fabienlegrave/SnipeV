@@ -41,6 +41,9 @@ export default function HomepagePage() {
   const [loadAllPages, setLoadAllPages] = useState(false)
   const [searchQuery, setSearchQuery] = useState('')
   const [sortBy, setSortBy] = useState<'relevance' | 'price-asc' | 'price-desc' | 'date-asc' | 'date-desc'>('relevance')
+  
+  // Vérifier si les cookies contiennent access_token_web (nécessaire pour l'endpoint homepage)
+  const hasAccessToken = fullCookies ? fullCookies.includes('access_token_web=') : false
 
   // Fonction pour récupérer les items homepage
   const fetchHomepageItems = async (pageToken?: string, sessionId?: string): Promise<HomepageResponse> => {
@@ -115,7 +118,7 @@ export default function HomepagePage() {
         return fetchHomepageItems(undefined, homepageSessionId)
       }
     },
-    enabled: !!fullCookies,
+    enabled: !!fullCookies && hasAccessToken,
     staleTime: 5 * 60 * 1000, // 5 minutes
     retry: 1
   })
@@ -227,6 +230,28 @@ export default function HomepagePage() {
           <AlertCircle className="h-4 w-4" />
           <AlertDescription>
             Cookies requis pour accéder à la homepage. Veuillez configurer vos cookies Vinted.
+          </AlertDescription>
+        </Alert>
+      </div>
+    )
+  }
+  
+  if (!hasAccessToken) {
+    return (
+      <div className="container mx-auto px-4 py-8">
+        <Alert variant="destructive">
+          <AlertCircle className="h-4 w-4" />
+          <AlertDescription>
+            <strong>Authentification incomplète</strong><br/>
+            L'endpoint homepage nécessite un <code>access_token_web</code> (authentification complète).<br/>
+            Les cookies Cloudflare/Datadome seuls ne suffisent pas pour cet endpoint.<br/>
+            <br/>
+            Pour utiliser la homepage, vous devez :
+            <ul className="list-disc list-inside mt-2 space-y-1">
+              <li>Vous connecter sur vinted.fr dans votre navigateur</li>
+              <li>Copier les cookies complets depuis DevTools (incluant <code>access_token_web</code>)</li>
+              <li>Les coller dans le TokenManager</li>
+            </ul>
           </AlertDescription>
         </Alert>
       </div>

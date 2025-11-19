@@ -5,20 +5,24 @@ A modern, full-stack application for scraping and analyzing Vinted listings with
 ## 🚀 Features
 
 ### Core Functionality
-- **🔍 Smart Search**: Fast API-based search with intelligent filtering
+- **🔍 Smart Search**: Fast API-based search with intelligent filtering and relevance scoring
 - **📊 Comprehensive Data Extraction**: Prices, conditions, descriptions, images, engagement metrics
 - **🔄 Intelligent Deduplication**: Avoid re-scraping existing items automatically
 - **👁️ AI Visual Analysis**: GPT Vision analyzes photos to extract facts about condition, completeness, and authenticity
 - **🤖 Smart Deal Detection**: AI-powered deal analysis based on visual facts and market comparisons
 - **💾 Persistent Storage**: Supabase PostgreSQL with optimized schemas and indexing
+- **🔔 Price Alerts**: Real-time monitoring with Telegram notifications for new matching items
+- **🏭 Cookie Factory**: Automated cookie generation and validation for seamless Vinted authentication
 
 ### User Interface
+- **📊 Professional Dashboard**: Overview of your collection with key metrics and quick actions
 - **🎨 Modern Design**: Beautiful, responsive interface with shadcn/ui components
 - **📱 Mobile-First**: Fully responsive design that works on all devices
 - **🔄 Real-time Updates**: Live progress tracking during AI analysis
 - **🔍 Advanced Search**: Filter by price, condition, availability, text search
 - **📈 AI Insights**: Visual facts, deal scores, and expert recommendations
 - **⚙️ System Monitoring**: Health checks and configuration status
+- **🏠 Personalized Feed**: Browse Vinted homepage recommendations
 
 ### Technical Excellence
 - **🏗️ Modern Architecture**: Next.js 14 with App Router and TypeScript
@@ -27,14 +31,17 @@ A modern, full-stack application for scraping and analyzing Vinted listings with
 - **📊 Database Optimization**: Trigram search, proper indexing, efficient queries
 - **🛡️ Error Handling**: Comprehensive error handling and retry logic
 - **📝 Detailed Logging**: Full visibility into AI analysis operations
+- **🍪 Cookie Management**: Automated cookie generation with Puppeteer for Cloudflare/Datadome bypass
 
 ## 🛠️ Technology Stack
 
 - **Frontend**: Next.js 14, TypeScript, Tailwind CSS, shadcn/ui, TanStack Query
 - **Backend**: Next.js API Routes, Node.js, OpenAI GPT Vision
 - **Database**: Supabase PostgreSQL with trigram search
-- **Authentication**: Vinted token-based authentication
+- **Authentication**: Vinted token-based authentication with automated cookie generation
 - **AI**: OpenAI GPT-4o-mini for visual analysis and deal detection
+- **Notifications**: Telegram Bot API for price alerts
+- **Browser Automation**: Puppeteer for cookie generation
 - **Styling**: Tailwind CSS with custom design system
 - **Icons**: Lucide React
 - **Deployment**: Vercel-ready with environment variable support
@@ -44,6 +51,7 @@ A modern, full-stack application for scraping and analyzing Vinted listings with
 - **Node.js 18+** - Latest LTS version recommended
 - **Supabase Account** - Free tier is sufficient to start
 - **Vinted Account** - For obtaining access tokens
+- **Telegram Bot** (Optional) - For price alert notifications
 - **Modern Browser** - Chrome, Firefox, Safari, or Edge
 
 ## 🚀 Quick Start
@@ -73,11 +81,16 @@ SUPABASE_SERVICE_ROLE_KEY=your_service_role_key_here
 # API Protection
 API_SECRET=your_secure_api_secret_here
 
-# AI Analysis
+# AI Analysis (Optional)
 OPENAI_API_KEY=sk-proj-your_openai_key_here
 
-# Vinted Authentication
-VINTED_ACCESS_TOKEN=your_vinted_access_token_here
+# Vinted Authentication (Optional - can be set via UI)
+VINTED_EMAIL=your_vinted_email@example.com
+VINTED_PASSWORD=your_vinted_password
+
+# Telegram Notifications (Optional)
+TELEGRAM_BOT_TOKEN=your_telegram_bot_token
+TELEGRAM_CHAT_ID=your_telegram_chat_id
 
 # Performance Tuning (Optional)
 ENRICH_CONCURRENCY=2
@@ -98,28 +111,55 @@ SCRAPE_DELAY_MS=1200
 
 This creates:
 - `vinted_items` table with all necessary columns
+- `price_alerts` table for monitoring
+- `alert_matches` table for tracking matches
 - AI Vision fields for visual analysis
-- Peer key system for smart comparisons
 - Optimized indexes for fast queries
 - Trigram search capabilities for text search
 - Proper data types for all Vinted fields
 
 ### 4. Get Vinted Access Token
 
-**Method 1: Browser Developer Tools (Recommended)**
+**Method 1: Cookie Factory (Recommended)**
+1. Start the development server: `npm run dev`
+2. Go to http://localhost:3000/settings
+3. Click "Cookie Factory 🏭" button
+4. The system will automatically generate fresh cookies using Puppeteer
+5. Cookies are automatically saved and validated
+
+**⚠️ Troubleshooting Cookie Factory:**
+- If no cookies are retrieved, it may indicate a temporary IP block due to rate limits (429 errors)
+- **Quick fix:** Share your mobile connection (hotspot) - this changes your IP and bypasses the block
+- Alternative: Use a VPN to change your IP
+- Wait 10-30 minutes before retrying if the issue persists
+
+**Method 2: Manual Cookie Extraction**
 1. Open https://www.vinted.fr and login to your account
 2. Open Developer Tools (F12)
 3. Go to **Application** → **Cookies** → **https://www.vinted.fr**
-4. Find the `access_token_web` cookie
-5. Copy its value to `VINTED_ACCESS_TOKEN` in your `.env.local`
+4. Copy all cookies (especially `access_token_web`, `refresh_token_web`, `datadome`, `cf_clearance`)
+5. Go to http://localhost:3000/settings
+6. Paste cookies in the token manager interface
 
-**Method 2: Use the Settings Page**
-1. Start the development server: `npm run dev`
-2. Go to http://localhost:3000/settings
-3. Use the token manager interface to paste all your cookies
-4. The system will automatically extract and validate the required tokens
+**Method 3: Environment Variables**
+- Set `VINTED_EMAIL` and `VINTED_PASSWORD` in `.env.local`
+- The Cookie Factory will use these for automatic login
 
-### 5. Start Development Server
+### 5. Setup Telegram Notifications (Optional)
+
+1. **Create a Telegram Bot**
+   - Open Telegram and search for [@BotFather](https://t.me/botfather)
+   - Send `/newbot` and follow instructions
+   - Copy the bot token to `TELEGRAM_BOT_TOKEN` in `.env.local`
+
+2. **Get Your Chat ID**
+   - Start a chat with your bot
+   - Send a message to your bot
+   - Visit: `https://api.telegram.org/bot<YOUR_BOT_TOKEN>/getUpdates`
+   - Find your chat ID in the response
+   - Add it to `TELEGRAM_CHAT_ID` in `.env.local`
+
+### 6. Start Development Server
 
 ```bash
 npm run dev
@@ -128,6 +168,14 @@ npm run dev
 Visit **http://localhost:3000** to access the application.
 
 ## 🎯 Usage Guide
+
+### Dashboard Overview (`/dashboard`)
+
+The dashboard provides a comprehensive overview of your collection:
+- **📊 Key Metrics**: Total items, favorites, available items, average price
+- **📈 Recent Activity**: Recently added items and active alerts
+- **⚡ Quick Actions**: Quick links to search, alerts, and settings
+- **🎯 AI Statistics**: Analysis progress and deal detection metrics
 
 ### Complete Scraping Workflow
 
@@ -158,27 +206,40 @@ The system automatically handles the complete workflow:
 - **📱 Grid View**: Beautiful card-based layout with images and key info
 - **🎯 AI Insights**: Visual facts, condition grades, and deal scores
 - **🔗 Quick Actions**: View details or jump to original Vinted listing
+- **🏷️ Tag Management**: Organize items with custom tags
 
 #### 5. Detailed Item View (`/items/[id]`)
 - **🖼️ Image Gallery**: All item photos with zoom capability
 - **👁️ Visual Facts**: AI-extracted inventory (cartridge, box, manual, etc.)
 - **💰 Complete Pricing**: Item price, shipping fees, buyer protection costs
 - **🤖 AI Analysis**: Expert-level deal evaluation with reasoning
-- **📊 Engagement Metrics**: View count, favorite count, listing age
 - **🔗 External Links**: Direct links to Vinted listing
+- **🏷️ Tags**: View and manage item tags
 
-#### 6. Deal Discovery (`/deals`)
-- **🔥 AI-Detected Deals**: Browse deals found by AI analysis
-- **📊 Deal Scores**: 0-100 scoring with savings calculations
-- **🎯 Smart Filtering**: Filter by game, platform, condition, score
-- **💎 Expert Recommendations**: Strong buy, good deal, fair price, avoid
+#### 6. Price Alerts (`/alerts` page)
+- **🔔 Create Alerts**: Set up monitoring for specific games/platforms
+- **💰 Price Thresholds**: Define maximum price for automatic matching
+- **📱 Telegram Notifications**: Get notified instantly when new items match
+- **📊 Match History**: View all items that matched your alerts
+- **⚙️ Alert Management**: Enable/disable alerts, view statistics
+
+#### 7. Personalized Feed (`/homepage` page)
+- **🏠 Vinted Recommendations**: Browse personalized homepage items
+- **🔄 Real-time Updates**: Fresh recommendations from Vinted
+- **💾 Auto-save**: Automatically save interesting items to your collection
 
 ### System Configuration (`/settings`)
-Monitor your application health:
-- **🔑 Token Management**: Configure and validate Vinted access tokens
+
+Monitor and configure your application:
+- **🔑 Token Management**: 
+  - View current token status
+  - Generate fresh cookies with Cookie Factory 🏭
+  - Manual cookie paste and validation
+  - Automatic token refresh
 - **⚙️ Configuration Status**: Environment variables, API connections
 - **🤖 AI Status**: OpenAI API configuration and usage
 - **📊 Database Status**: Connection health and statistics
+- **🔔 Telegram Status**: Bot connection and notification settings
 
 ## 🏗️ Architecture Deep Dive
 
@@ -186,29 +247,42 @@ Monitor your application health:
 ```
 ├── app/
 │   ├── api/v1/              # API endpoints
+│   │   ├── admin/vinted/    # Admin operations
+│   │   │   └── cookie-factory/  # Cookie generation
+│   │   ├── alerts/          # Price alerts
 │   │   ├── scrape/          # Scraping operations
-│   │   ├── missing-ids/     # Deduplication logic
-│   │   ├── upsert/          # Database operations
-│   │   └── setup-token/     # Token validation
-│   ├── runs/                # Scraping interface
-│   ├── items/               # Browse and view items
-│   ├── settings/            # System monitoring
-│   └── layout.tsx           # Root layout
+│   │   ├── items/           # Item management
+│   │   ├── homepage/         # Feed recommendations
+│   │   └── vision/          # AI analysis
+│   ├── dashboard/           # Main dashboard
+│   ├── search/              # Search interface
+│   ├── items/              # Browse and view items
+│   ├── alerts/             # Price alerts management
+│   ├── homepage/           # Personalized feed
+│   ├── settings/           # System configuration
+│   └── layout.tsx          # Root layout
 ├── components/
 │   ├── ui/                  # Reusable UI components
 │   ├── layout/              # Navigation and layout
-│   └── TokenSetup.tsx       # Token configuration
+│   └── TokenManager.tsx    # Token management
 ├── lib/
 │   ├── scrape/              # Scraping modules
-│   │   ├── searchCatalog.ts # API search logic
-│   │   ├── serverOnlyParser.js # HTML parsing (server-only)
-│   │   ├── fetchHtml.ts     # HTTP client with retries
-│   │   └── concurrency.ts   # Parallel processing
-│   ├── supabase.ts          # Database clients
-│   ├── types.ts             # TypeScript definitions
-│   └── utils.ts             # Helper functions
-├── supabase/migrations/     # Database schemas
-└── scripts/                 # Utility scripts
+│   │   ├── searchCatalogWithFullSession.ts  # API search
+│   │   ├── serverOnlyParser.js              # HTML parsing
+│   │   ├── fullSessionManager.ts           # Session management
+│   │   ├── tokenRenewer.ts                 # Token refresh
+│   │   ├── concurrency.ts                  # Parallel processing
+│   │   └── gemDetector.ts                  # Deal detection
+│   ├── alerts/              # Alert management
+│   │   └── checkAlertsStandalone.ts
+│   ├── notifications/      # Notification system
+│   │   └── telegram.ts
+│   ├── supabase.ts         # Database clients
+│   ├── types/              # TypeScript definitions
+│   └── utils/              # Helper functions
+├── supabase/migrations/    # Database schemas
+└── scripts/                # Utility scripts
+    └── generateCookiesStandalone.js  # Cookie generation
 ```
 
 ### Data Flow Architecture
@@ -232,6 +306,22 @@ Monitor your application health:
    ```
    Rich Data → Data Validation → Database Upsert → Success Response
    ```
+
+5. **Alert Monitoring Phase**
+   ```
+   Alert Criteria → API Search → Match Detection → Telegram Notification
+   ```
+
+### Cookie Factory Architecture
+
+The Cookie Factory system provides automated cookie generation:
+
+1. **Puppeteer Automation**: Headless browser navigates to Vinted
+2. **Cloudflare/Datadome Bypass**: Automatically handles challenges
+3. **Token Extraction**: Extracts `access_token_web`, `refresh_token_web`, `datadome`, `cf_clearance`
+4. **Validation**: Tests cookies against Vinted API endpoints
+5. **Storage**: Saves validated cookies to database
+6. **Auto-refresh**: Automatically refreshes tokens when needed
 
 ### Native JavaScript Parsing Engine
 
@@ -276,6 +366,16 @@ API_SECRET=your_very_secure_random_string_here
 SUPABASE_SERVICE_ROLE_KEY=your_service_role_key
 ```
 
+### Telegram Configuration
+
+```env
+# Telegram Bot Token (from @BotFather)
+TELEGRAM_BOT_TOKEN=123456789:ABCdefGHIjklMNOpqrsTUVwxyz
+
+# Your Telegram Chat ID (get from getUpdates API)
+TELEGRAM_CHAT_ID=123456789
+```
+
 ## 📊 API Reference
 
 All API endpoints require the `x-api-key` header with your `API_SECRET`.
@@ -288,8 +388,7 @@ All API endpoints require the `x-api-key` header with your `API_SECRET`.
   "query": "nintendo gameboy",
   "priceFrom": 10,
   "priceTo": 100,
-  "limit": 50,
-  "token": "optional_override_token"
+  "limit": 50
 }
 ```
 
@@ -299,6 +398,30 @@ All API endpoints require the `x-api-key` header with your `API_SECRET`.
   "ids": [123456789, 987654321]
 }
 ```
+
+### Alert Operations
+
+**POST** `/api/v1/alerts/check`
+Triggers manual alert check for all active alerts.
+
+**GET** `/api/v1/alerts/matches`
+Returns all items that matched your alerts.
+
+**POST** `/api/v1/alerts`
+Create a new price alert:
+```json
+{
+  "title": "Nintendo Switch",
+  "platform": "Nintendo Switch",
+  "max_price": 200,
+  "is_active": true
+}
+```
+
+### Cookie Management
+
+**POST** `/api/v1/admin/vinted/cookie-factory`
+Generate fresh cookies using Puppeteer (requires API key).
 
 ### Database Operations
 
@@ -316,8 +439,7 @@ All API endpoints require the `x-api-key` header with your `API_SECRET`.
     "id": 123456789,
     "url": "https://www.vinted.fr/items/123456789",
     "title": "Vintage Nintendo Game Boy",
-    "price": { "amount": 45.00, "currency_code": "EUR" },
-    // ... other fields
+    "price": { "amount": 45.00, "currency_code": "EUR" }
   }
 ]
 ```
@@ -327,6 +449,10 @@ All API endpoints require the `x-api-key` header with your `API_SECRET`.
 **GET** `/api/v1/item/123456789`
 
 Returns complete item data in API format.
+
+**DELETE** `/api/v1/items/123456789`
+
+Deletes an item from the database.
 
 ## 🚢 Deployment Guide
 
@@ -385,6 +511,7 @@ Visit `/settings` to monitor:
 - **Token Validity**: Vinted authentication status
 - **API Performance**: Response times and error rates
 - **Data Quality**: Completeness and freshness metrics
+- **Cookie Status**: Cloudflare/Datadome cookie validity
 
 ### Logs and Debugging
 
@@ -405,8 +532,9 @@ pm2 logs vinted-scrap
 
 **Token Refresh**
 - Tokens typically expire every few weeks
-- Use the built-in token setup interface
+- Use the Cookie Factory in `/settings` to generate fresh cookies
 - Monitor the `/settings` page for expiration warnings
+- System can automatically refresh tokens using `refresh_token_web`
 
 **Database Cleanup**
 ```sql
@@ -492,9 +620,9 @@ curl -X POST http://localhost:3000/api/v1/scrape/search \
 ### Common Issues and Solutions
 
 **❌ "Authentication failed - token may be expired"**
-- **Solution**: Update your `VINTED_ACCESS_TOKEN`
-- **How**: Use the token setup interface at `/runs`
-- **Prevention**: Monitor token expiration in `/settings`
+- **Solution**: Use Cookie Factory in `/settings` to generate fresh cookies
+- **Alternative**: Manually update cookies from browser
+- **Prevention**: Enable automatic token refresh
 
 **❌ "Database error" or connection issues**
 - **Check**: Supabase URL and service role key in environment
@@ -510,7 +638,22 @@ curl -X POST http://localhost:3000/api/v1/scrape/search \
 - **Verify**: Search query syntax and spelling
 - **Check**: Price range isn't too restrictive
 - **Test**: Try the same search on Vinted website
-- **Token**: Ensure your access token is valid
+- **Token**: Ensure your access token is valid (use Cookie Factory)
+
+**❌ "Cookie Factory failed" or Puppeteer errors**
+- **Check**: Chrome/Chromium is installed on the server
+- **Verify**: `VINTED_EMAIL` and `VINTED_PASSWORD` are set (optional)
+- **If no cookies retrieved**: This often indicates a temporary IP block due to rate limits
+  - **Quick fix**: Share your mobile connection (hotspot) - changes IP and works immediately ✅
+  - **Alternative**: Use a VPN to change your IP
+  - **Wait**: 10-30 minutes before retrying
+- **Alternative**: Use manual cookie paste method
+- **Note**: Cookie Factory requires more resources than manual method
+
+**❌ Telegram notifications not working**
+- **Verify**: `TELEGRAM_BOT_TOKEN` and `TELEGRAM_CHAT_ID` are correct
+- **Check**: Bot is started (send `/start` to your bot)
+- **Test**: Visit `/settings` to check Telegram status
 
 **❌ Build or deployment errors**
 - **Environment**: Verify all required variables are set
@@ -592,6 +735,7 @@ This project is licensed under the **MIT License** - see the [LICENSE](LICENSE) 
 - **Tailwind CSS** - For the utility-first CSS framework
 - **shadcn/ui** - For beautiful, accessible UI components
 - **Lucide** - For the comprehensive icon library
+- **Puppeteer** - For browser automation capabilities
 
 ### Community
 - **Open Source Community** - For inspiration and best practices
@@ -603,10 +747,12 @@ This project is licensed under the **MIT License** - see the [LICENSE](LICENSE) 
 ## 🚀 Ready to Start?
 
 1. **⚡ Quick Setup**: Follow the Quick Start guide above
-2. **🎯 First Scrape**: Try searching for "nintendo gameboy" with a limit of 10
-3. **📊 Explore Data**: Browse your results in the Items section
-4. **⚙️ Monitor**: Check the Settings page for system health
-5. **🔧 Customize**: Adjust settings for your specific needs
+2. **🏭 Cookie Factory**: Generate fresh cookies in Settings
+3. **🎯 First Scrape**: Try searching for "nintendo gameboy" with a limit of 10
+4. **📊 Explore Data**: Browse your results in the Items section
+5. **🔔 Set Alerts**: Create price alerts for items you're interested in
+6. **⚙️ Monitor**: Check the Settings page for system health
+7. **🔧 Customize**: Adjust settings for your specific needs
 
 **Happy scraping!** 🛍️✨
 

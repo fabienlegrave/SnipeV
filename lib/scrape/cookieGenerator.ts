@@ -156,6 +156,49 @@ export async function generateVintedCookiesWithPuppeteer(): Promise<CookieGenera
         }
       }
 
+      // Essayer de se connecter si des credentials sont fournis (optionnel)
+      // Cela permettra d'obtenir access_token_web
+      const vintedEmail = process.env.VINTED_EMAIL
+      const vintedPassword = process.env.VINTED_PASSWORD
+      
+      if (vintedEmail && vintedPassword) {
+        try {
+          logger.info('🔐 Tentative de connexion pour obtenir access_token_web...')
+          
+          // Cliquer sur le bouton de connexion
+          await page.waitForSelector('a[href*="login"], button:has-text("Se connecter"), button:has-text("Log in")', { timeout: 5000 }).catch(() => null)
+          const loginButton = await page.$('a[href*="login"], button:has-text("Se connecter"), button:has-text("Log in")')
+          if (loginButton) {
+            await loginButton.click()
+            await page.waitForTimeout(2000)
+          }
+          
+          // Remplir le formulaire de connexion
+          await page.waitForSelector('input[type="email"], input[name="email"], input[id*="email"]', { timeout: 5000 })
+          await page.type('input[type="email"], input[name="email"], input[id*="email"]', vintedEmail, { delay: 100 })
+          await page.waitForTimeout(500)
+          
+          await page.waitForSelector('input[type="password"], input[name="password"], input[id*="password"]', { timeout: 5000 })
+          await page.type('input[type="password"], input[name="password"], input[id*="password"]', vintedPassword, { delay: 100 })
+          await page.waitForTimeout(500)
+          
+          // Soumettre le formulaire
+          const submitButton = await page.$('button[type="submit"], button:has-text("Se connecter"), button:has-text("Log in")')
+          if (submitButton) {
+            await submitButton.click()
+            await page.waitForNavigation({ waitUntil: 'networkidle2', timeout: 15000 })
+            await page.waitForTimeout(3000) // Attendre que les cookies soient générés
+            logger.info('✅ Connexion réussie, access_token_web devrait être disponible')
+          }
+        } catch (error) {
+          logger.warn('⚠️ Échec de la connexion automatique (non bloquant):', error instanceof Error ? error.message : 'Unknown error')
+          logger.warn('💡 Les cookies Cloudflare sont toujours générés, mais access_token_web sera manquant')
+        }
+      } else {
+        logger.info('ℹ️ VINTED_EMAIL et VINTED_PASSWORD non configurés - connexion automatique désactivée')
+        logger.info('💡 Pour obtenir access_token_web, configurez VINTED_EMAIL et VINTED_PASSWORD dans .env.local')
+      }
+
       // Récupérer tous les cookies
       const cookies = await page.cookies('https://www.vinted.fr')
       
