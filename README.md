@@ -282,7 +282,8 @@ Monitor and configure your application:
 │   └── utils/              # Helper functions
 ├── supabase/migrations/    # Database schemas
 └── scripts/                # Utility scripts
-    └── generateCookiesStandalone.js  # Cookie generation
+    ├── generateCookiesStandalone.js  # Cookie generation
+    └── test-vinted-endpoints.js      # Endpoint testing tool
 ```
 
 ### Data Flow Architecture
@@ -587,7 +588,42 @@ curl -X POST http://localhost:3000/api/v1/scrape/search \
   -H "Content-Type: application/json" \
   -H "x-api-key: your_api_secret" \
   -d '{"query": "test", "limit": 5}'
+
+# Test all Vinted endpoints with different cookie types
+npm run test:endpoints -- --cookies "your_cookie_string_here"
+# Or set VINTED_COOKIES environment variable:
+VINTED_COOKIES="your_cookies" npm run test:endpoints
 ```
+
+#### Endpoint Testing Tool
+
+Le script `test-vinted-endpoints.js` teste tous les endpoints Vinted connus avec différents types de cookies pour identifier quels cookies sont nécessaires pour chaque endpoint.
+
+**Usage:**
+```bash
+# Avec cookies en argument
+npm run test:endpoints -- --cookies "access_token_web=xxx; cf_clearance=yyy; datadome=zzz"
+
+# Avec variable d'environnement
+VINTED_COOKIES="your_cookies" npm run test:endpoints
+
+# Sans cookies (teste seulement les endpoints publics)
+npm run test:endpoints
+```
+
+**Ce que le script teste:**
+- ✅ Tous les endpoints Vinted connus (catalog, homepage, auth, etc.)
+- ✅ Différents types de cookies (aucun, access_token seulement, Cloudflare seulement, cookies complets)
+- ✅ Détermine les exigences minimales pour chaque endpoint
+- ✅ Génère un rapport détaillé avec recommandations
+
+**Résultat:**
+- Rapport console formaté avec tableau récapitulatif
+- Fichier JSON détaillé (`test-endpoints-report-{timestamp}.json`)
+- Identification claire des endpoints nécessitant:
+  - `access_token_web` (authentification)
+  - Cookies Cloudflare (`cf_clearance`, `datadome`)
+  - Cookies complets (auth + Cloudflare)
 
 ### Code Quality
 

@@ -21,10 +21,36 @@ async function generateCookies() {
 
     console.log('🌐 Démarrage du navigateur headless...')
 
-    const executablePath = process.env.PUPPETEER_EXECUTABLE_PATH || undefined
+    // Déterminer le chemin Chromium/Chrome
+    let executablePath = process.env.PUPPETEER_EXECUTABLE_PATH
+    
+    // Si pas de chemin défini, essayer les chemins Linux par défaut
+    if (!executablePath) {
+      const fs = require('fs')
+      const possiblePaths = [
+        '/usr/bin/chromium',
+        '/usr/bin/chromium-browser',
+        '/usr/bin/google-chrome',
+        '/usr/bin/google-chrome-stable',
+      ]
+      
+      for (const path of possiblePaths) {
+        if (fs.existsSync(path)) {
+          executablePath = path
+          console.log(`✅ Chromium trouvé à: ${path}`)
+          break
+        }
+      }
+    }
+    
+    if (executablePath) {
+      console.log(`🔧 Utilisation de Chromium: ${executablePath}`)
+    } else {
+      console.log('⚠️ Aucun chemin Chromium spécifié, Puppeteer utilisera son Chrome intégré')
+    }
     
     const browser = await puppeteer.launch({
-      headless: true,
+      headless: 'new', // Utiliser le nouveau mode headless
       executablePath,
       args: [
         '--no-sandbox',

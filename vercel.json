@@ -1,9 +1,0 @@
-{
-  "functions": {
-    "app/api/v1/admin/vinted/cookie-factory/route.ts": {
-      "maxDuration": 60
-    }
-  },
-  "regions": ["cdg1"]
-}
-

@@ -1,5 +1,5 @@
-# Dockerfile pour Railway (support Puppeteer)
-FROM node:18-slim
+# Dockerfile pour Fly.io (support Puppeteer)
+FROM node:20-slim
 
 # Installer les dépendances système pour Chromium
 RUN apt-get update && apt-get install -y \

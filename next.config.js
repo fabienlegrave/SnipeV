@@ -6,12 +6,6 @@ const nextConfig = {
   images: {
     domains: ['images1.vinted.net', 'images2.vinted.net', 'via.placeholder.com'],
   },
-  // Exclure puppeteer de l'analyse statique (Next.js 13+)
-  serverComponentsExternalPackages: [
-    'puppeteer',
-    'puppeteer-extra',
-    'puppeteer-extra-plugin-stealth',
-  ],
   webpack: (config, { isServer }) => {
     if (!isServer) {
       // Completely exclude server-only modules from client bundle

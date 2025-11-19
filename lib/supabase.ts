@@ -11,13 +11,22 @@ export const supabase = (() => {
     return null
   }
 
+  // Ne pas afficher les warnings pendant le build Next.js (variables disponibles seulement au runtime)
+  // Next.js définit NEXT_PHASE pendant le build
+  const isBuildTime = process.env.NEXT_PHASE === 'phase-production-build' || 
+                      (process.env.NODE_ENV === 'production' && typeof process.env.SUPABASE_URL === 'undefined' && typeof process.env.NEXT_PUBLIC_SUPABASE_URL === 'undefined')
+
   if (!supabaseUrl) {
-    console.warn('❌ Missing SUPABASE_URL or NEXT_PUBLIC_SUPABASE_URL environment variable')
+    if (!isBuildTime) {
+      console.warn('❌ Missing SUPABASE_URL or NEXT_PUBLIC_SUPABASE_URL environment variable')
+    }
     return null
   }
 
   if (!supabaseServiceKey) {
-    console.warn('❌ Missing SUPABASE_SERVICE_ROLE_KEY environment variable (server-side only)')
+    if (!isBuildTime) {
+      console.warn('❌ Missing SUPABASE_SERVICE_ROLE_KEY environment variable (server-side only)')
+    }
     return null
   }
 
@@ -77,14 +86,22 @@ export const supabaseClient = (() => {
   const clientUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
   const clientKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
   
-  console.log('Client Supabase config:', { 
-    url: clientUrl ? 'Set' : 'Missing', 
-    key: clientKey ? 'Set' : 'Missing',
-    keyPreview: clientKey ? `${clientKey.substring(0, 10)}...` : 'None'
-  })
+  // Ne pas afficher les logs pendant le build Next.js
+  const isBuildTime = process.env.NEXT_PHASE === 'phase-production-build' || 
+                      (process.env.NODE_ENV === 'production' && typeof clientUrl === 'undefined' && typeof clientKey === 'undefined')
+  
+  if (!isBuildTime) {
+    console.log('Client Supabase config:', { 
+      url: clientUrl ? 'Set' : 'Missing', 
+      key: clientKey ? 'Set' : 'Missing',
+      keyPreview: clientKey ? `${clientKey.substring(0, 10)}...` : 'None'
+    })
+  }
 
   if (!clientUrl || !clientKey) {
-    console.warn('Missing client-side Supabase environment variables')
+    if (!isBuildTime) {
+      console.warn('Missing client-side Supabase environment variables')
+    }
     // Return a dummy client to prevent crashes
     return {
       from: () => ({
