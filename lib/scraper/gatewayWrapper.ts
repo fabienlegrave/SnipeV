@@ -45,27 +45,28 @@ export async function fetchViaGateway(
     })
     
     if (result.success && result.data) {
-      // Créer une Response simulée depuis les données du gateway
-      const responseData = result.data
+      // Le scraper node retourne déjà le format attendu
+      // Si c'est du JSON stringifié, le garder tel quel
+      // Si c'est un objet, le stringifier
+      let responseBody: string
       
-      // Si c'est du JSON, le parser
-      let jsonData: any
-      if (typeof responseData === 'string') {
-        try {
-          jsonData = JSON.parse(responseData)
-        } catch {
-          jsonData = responseData
-        }
+      if (typeof result.data === 'string') {
+        // Déjà une string (HTML ou JSON stringifié)
+        responseBody = result.data
+      } else if (result.data.data && typeof result.data.data === 'string') {
+        // Le scraper node retourne { success: true, data: "..." }
+        responseBody = result.data.data
       } else {
-        jsonData = responseData
+        // Objet, le stringifier
+        responseBody = JSON.stringify(result.data)
       }
       
-      // Créer une Response compatible
-      return new Response(JSON.stringify(jsonData), {
+      // Créer une Response compatible avec fetch
+      return new Response(responseBody, {
         status: 200,
         statusText: 'OK',
         headers: {
-          'Content-Type': 'application/json',
+          'Content-Type': result.data.headers?.['content-type'] || 'application/json',
         },
       })
     } else {

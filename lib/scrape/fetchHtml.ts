@@ -1,4 +1,5 @@
 import { logger } from '../logger'
+import { fetchViaGateway } from '../scraper/gatewayWrapper'
 
 export interface FetchOptions {
   headers?: Record<string, string>
@@ -67,21 +68,36 @@ export async function fetchWithRetry(
 
   let lastError: Error
 
+  // Vérifier si le gateway est activé et si l'URL est une URL Vinted
+  const useGateway = process.env.ENABLE_GATEWAY === 'true' && url.includes('vinted.fr')
+  
   for (let attempt = 1; attempt <= retries; attempt++) {
     try {
-      const controller = new AbortController()
-      const timeoutId = setTimeout(() => controller.abort(), timeout)
-
-      const response = await fetch(url, {
-        headers,
-        signal: controller.signal,
-        // Disable SSL verification in development if needed
-        ...(process.env.NODE_TLS_REJECT_UNAUTHORIZED === '0' && {
-          agent: false
+      let response: Response
+      
+      if (useGateway) {
+        // Utiliser le gateway pour router via les scraper nodes
+        logger.debug(`🌐 Utilisation du gateway pour: ${url}`)
+        response = await fetchViaGateway(url, {
+          method: 'GET',
+          headers,
         })
-      })
+      } else {
+        // Mode direct (comportement par défaut)
+        const controller = new AbortController()
+        const timeoutId = setTimeout(() => controller.abort(), timeout)
 
-      clearTimeout(timeoutId)
+        response = await fetch(url, {
+          headers,
+          signal: controller.signal,
+          // Disable SSL verification in development if needed
+          ...(process.env.NODE_TLS_REJECT_UNAUTHORIZED === '0' && {
+            agent: false
+          })
+        })
+
+        clearTimeout(timeoutId)
+      }
 
       if (!response.ok) {
         throw new Error(`HTTP ${response.status}: ${response.statusText}`)
