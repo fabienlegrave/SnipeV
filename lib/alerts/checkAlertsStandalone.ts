@@ -5,8 +5,9 @@
 
 import { supabase } from '@/lib/supabase'
 import { logger } from '@/lib/logger'
-import { searchAllPagesWithFullSession } from '@/lib/scrape/searchCatalogWithFullSession'
-import { createFullSessionFromCookies } from '@/lib/scrape/fullSessionManager'
+import { searchMultiplePages } from '@/lib/scrape/unifiedSearch'
+import { getSessionWithFallback } from '@/lib/auth/sessionManager'
+import { globalSearchCache } from '@/lib/cache/searchCache'
 import { vintedItemToApiItem } from '@/lib/utils/vintedItemToApiItem'
 import { upsertItemsToDb } from '@/lib/utils/upsertItems'
 import { getRequestDelayWithJitter } from '@/lib/config/delays'
@@ -354,7 +355,7 @@ export async function checkAlertsStandalone(fullCookies: string): Promise<CheckA
     }
 
     // 2. Créer la session
-    const session = createFullSessionFromCookies(fullCookies)
+    const session = await getSessionWithFallback({ fullCookies })
 
     // 3. Pour chaque alerte, requêter directement l'API promoted_closets avec les filtres appropriés
     const matches: AlertMatch[] = []
@@ -388,19 +389,43 @@ export async function checkAlertsStandalone(fullCookies: string): Promise<CheckA
       try {
         // Utiliser l'endpoint /api/v2/catalog/items comme la recherche normale
         // Limité à 40 items max (2 pages) pour un bon compromis entre couverture et agressivité
-        const items = await searchAllPagesWithFullSession(alert.game_title, {
+        const cacheKey = `alert_${alert.id}_${alert.game_title}`
+        const cached = await globalSearchCache.get(cacheKey, {
           priceTo: alert.max_price,
-          limit: 40, // Limite de sécurité : 40 items max (2 pages × 20 items)
-          session
-        }).catch(async (error: Error) => {
-          // Détecter les erreurs 403/401
-          const errorMessage = error.message || String(error)
-          if (errorMessage.includes('HTTP 403') || errorMessage.includes('403')) {
-            logger.error(`❌ Erreur 403 détectée pour l'alerte "${alert.game_title}"`)
-            throw { is403: true, originalError: error }
-          }
-          throw error
+          limit: 40
         })
+
+        let items: ApiItem[]
+        if (cached) {
+          logger.info(`✅ Résultats depuis le cache pour: ${alert.game_title}`)
+          items = cached.items
+        } else {
+          try {
+            const result = await searchMultiplePages(alert.game_title, {
+              priceFrom: 0,
+              priceTo: alert.max_price,
+              limit: 40,
+              session,
+              minRelevanceScore: 40,
+              maxPages: 2
+            })
+            items = result.items
+
+            if (items.length > 0) {
+              await globalSearchCache.set(cacheKey, {
+                priceTo: alert.max_price,
+                limit: 40
+              }, result)
+            }
+          } catch (error: any) {
+            const errorMessage = error.message || String(error)
+            if (errorMessage.includes('HTTP 403') || errorMessage.includes('403')) {
+              logger.error(`❌ Erreur 403 détectée pour l'alerte "${alert.game_title}"`)
+              throw { is403: true, originalError: error }
+            }
+            throw error
+          }
+        }
         
         logger.info(`📦 ${items.length} items récupérés depuis /api/v2/catalog/items pour l'alerte "${alert.game_title}"`)
         

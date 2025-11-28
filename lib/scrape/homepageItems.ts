@@ -8,7 +8,7 @@
 import { buildVintedApiHeaders, FullVintedSession } from './fullSessionManager'
 import { logger } from '@/lib/logger'
 import { VintedItem, ApiItem } from '@/lib/types/core'
-import { normalizeApiItem } from './searchCatalogWithFullSession'
+import { normalizeApiItem } from './unifiedSearch'
 
 export interface HomepageRequest {
   nextPageToken?: string

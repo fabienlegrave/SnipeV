@@ -5,6 +5,7 @@
  */
 
 import { logger } from '@/lib/logger'
+import { globalSearchCache, schedulePeriodicCleanup } from '@/lib/cache/searchCache'
 
 interface WorkerNode {
   id: string
@@ -882,7 +883,15 @@ export async function initializeMainWorker(): Promise<void> {
     logger.warn('⚠️ Impossible d\'initialiser le worker de régénération des tokens:', error as Error)
     logger.info('💡 Les tokens seront régénérés manuellement ou via l\'initialisation normale')
   }
-  
+
+  // Initialiser le nettoyage automatique du cache
+  try {
+    await schedulePeriodicCleanup(30) // Toutes les 30 minutes
+    logger.info('✅ Nettoyage automatique du cache activé (toutes les 30 minutes)')
+  } catch (error) {
+    logger.warn('⚠️ Impossible d\'initialiser le nettoyage du cache:', error as Error)
+  }
+
   logger.info('✅ Main Worker initialisé')
 }
 

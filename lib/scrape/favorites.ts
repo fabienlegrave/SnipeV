@@ -3,7 +3,7 @@
  */
 
 import { buildVintedApiHeaders, type FullVintedSession } from './fullSessionManager'
-import { normalizeApiItem } from './searchCatalogWithFullSession'
+import { normalizeApiItem } from './unifiedSearch'
 import { logger } from '../logger'
 import type { ApiItem } from '../types/core'
 
