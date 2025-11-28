@@ -80,8 +80,7 @@ export async function startup(): Promise<void> {
   }
 
   initialized = true
-  logger.info('🚀 Démarrage de l\'initialisation automatique des cookies...')
-  console.log('🔧 [STARTUP] Initialisation automatique des cookies démarrée')
+  logger.info('🚀 [STARTUP] Démarrage de l\'initialisation automatique des cookies...')
 
   // Vérifier si on doit exécuter le cycle complet automatiquement
   // ⚠️ DÉSACTIVÉ PAR DÉFAUT : Les cycles doivent être orchestrés via /api/v1/alerts/run-once
@@ -92,23 +91,20 @@ export async function startup(): Promise<void> {
   // Utiliser un délai pour laisser Next.js finir son démarrage
   setTimeout(async () => {
     try {
-      console.log('🔧 [STARTUP] Début de la vérification/génération des cookies...')
-      logger.info('🔐 Vérification et génération des cookies...')
+      logger.info('🔧 [STARTUP] Début de la vérification/génération des cookies...')
       
       const result = await initializeCookies(process.env.AUTO_GENERATE_COOKIES !== 'false')
       
       if (result.success) {
         if (result.cookiesGenerated) {
-          console.log('✅ [STARTUP] Cookies générés automatiquement')
-          logger.info('✅ Cookies générés automatiquement au démarrage')
+          logger.info('✅ [STARTUP] Cookies générés automatiquement au démarrage')
           if (!result.cookiesValid) {
             logger.warn('⚠️ Les cookies ont été générés mais le token n\'est pas valide')
             logger.info('💡 Configurez VINTED_EMAIL et VINTED_PASSWORD pour obtenir un token valide')
             return // Ne pas continuer si les cookies ne sont pas valides
           }
         } else {
-          console.log('✅ [STARTUP] Cookies valides déjà disponibles')
-          logger.info('✅ Cookies valides déjà disponibles')
+          logger.info('✅ [STARTUP] Cookies valides déjà disponibles')
         }
 
         // Si autoRunCycle est activé, exécuter le cycle complet
@@ -160,14 +156,12 @@ export async function startup(): Promise<void> {
           logger.info('💡 Pour activer le cycle automatique (non recommandé): définir AUTO_RUN_CYCLE=true')
         }
       } else {
-        console.log(`⚠️ [STARTUP] Échec: ${result.error}`)
-        logger.warn(`⚠️ Échec de l'initialisation automatique: ${result.error}`)
+        logger.warn(`⚠️ [STARTUP] Échec de l'initialisation automatique: ${result.error}`)
         logger.info('💡 Vous pouvez initialiser manuellement via: npm run init:cookies')
         logger.info('💡 Ou via l\'API: POST /api/v1/init/cookies')
       }
     } catch (error) {
-      console.error('❌ [STARTUP] Erreur:', error)
-      logger.error('❌ Erreur lors de l\'initialisation automatique', error as Error)
+      logger.error('❌ [STARTUP] Erreur lors de l\'initialisation automatique', error as Error)
     }
   }, 5000) // Attendre 5 secondes après le démarrage pour laisser Next.js s'initialiser complètement
 }

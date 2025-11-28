@@ -7,6 +7,9 @@
     "build": "next build",
     "start": "next start",
     "lint": "next lint",
+    "test": "vitest",
+    "test:ui": "vitest --ui",
+    "test:run": "vitest run",
     "init:cookies": "npx tsx scripts/init-cookies.ts",
     "fetch:favorites": "npx tsx scripts/fetch-all-favorites.ts",
     "cleanup:alerts": "npx tsx scripts/cleanup-duplicate-alerts.ts",
@@ -32,8 +35,10 @@
     "@types/node-fetch": "^2.6.13",
     "@types/react": "^18.2.48",
     "@types/react-dom": "^18.2.18",
+    "@vitest/ui": "^4.0.14",
     "eslint": "^8.57.0",
     "eslint-config-next": "14.1.0",
-    "typescript": "^5.3.3"
+    "typescript": "^5.3.3",
+    "vitest": "^4.0.14"
   }
 }
