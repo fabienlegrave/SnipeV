@@ -1,13 +1,14 @@
-import '../app/globals.css'
-import type { Metadata } from 'next'
-import { Inter } from 'next/font/google'
-import { Providers } from './providers'
+/**
+ * Layout minimal pour une application backend pure
+ * Next.js est utilisé uniquement pour les routes API
+ */
 
-const inter = Inter({ subsets: ['latin'] })
+import type { Metadata } from 'next'
+// Note: L'initialisation se fait via instrumentation.ts au démarrage du serveur
 
 export const metadata: Metadata = {
-  title: 'VintedScrap - Vinted Scraping Tool',
-  description: 'Professional Vinted scraping and analysis tool',
+  title: 'Vinted Alerts API',
+  description: 'Backend API pour les alertes Vinted basées sur les favoris',
 }
 
 export default function RootLayout({
@@ -16,11 +17,9 @@ export default function RootLayout({
   children: React.ReactNode
 }) {
   return (
-    <html lang="en" suppressHydrationWarning>
-      <body className={inter.className}>
-        <Providers>
-          {children}
-        </Providers>
+    <html lang="fr">
+      <body style={{ margin: 0, padding: 0, fontFamily: 'system-ui, sans-serif' }}>
+        {children}
       </body>
     </html>
   )

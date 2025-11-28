@@ -331,3 +331,105 @@ export async function searchAllPages(
 
   return allItems
 }
+
+/**
+ * Recherche simplifiée sans enrichissement IA
+ * Version basique qui ne fait que récupérer les données de l'API Vinted
+ */
+export async function searchVintedCatalogSimple(
+  query: string,
+  options: {
+    priceFrom?: number
+    priceTo?: number
+    limit?: number
+    session?: any
+  } = {}
+): Promise<any[]> {
+  const { priceFrom, priceTo, limit = 100, session } = options
+
+  const allItems: any[] = []
+  let page = 1
+  const maxPages = Math.ceil(limit / 96) // 96 items par page max
+
+  while (page <= maxPages) {
+    try {
+      const searchParams: VintedSearchParams = {
+        searchText: query,
+        priceFrom,
+        priceTo,
+        page,
+        perPage: 96
+      }
+
+      const url = buildSearchUrl(searchParams)
+      const headers = session ? buildFullVintedHeaders(session) : buildHeaders()
+
+      const response = await fetchWithRetry(url, {
+        headers,
+        timeout: 10000
+      })
+
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}: ${response.statusText}`)
+      }
+
+      const data: VintedApiResponse = await response.json()
+
+      if (!data.items || data.items.length === 0) {
+        console.log(`📄 No more results at page ${page}`)
+        break
+      }
+
+      // Conversion simple des items Vinted vers ApiItem
+      const convertedItems = data.items.map(item => ({
+        id: item.id,
+        title: item.title,
+        description: item.description || '',
+        price: {
+          amount: item.price_numeric || item.price,
+          currency_code: item.currency || 'EUR'
+        },
+        url: item.url || `https://www.vinted.fr/items/${item.id}`,
+        photos: (item.photos || []).map((photo: any) => ({
+          url: photo.url || '',
+          url_thumbnail: photo.url_thumbnail || photo.url || ''
+        })),
+        brand: item.brand_title || '',
+        size: item.size_title || '',
+        condition: item.status || '',
+        // Métadonnées de base
+        scraped_at: new Date().toISOString(),
+        source: 'vinted_api'
+      }))
+
+      allItems.push(...convertedItems)
+
+      if (allItems.length >= limit) {
+        allItems.splice(limit)
+        console.log(`🔒 Limit reached: ${limit} items`)
+        break
+      }
+
+      // Vérifier s'il y a plus de pages
+      const totalPages = data.pagination?.total_pages || 1
+      if (page >= totalPages) {
+        console.log(`📄 No more pages available`)
+        break
+      }
+
+      page++
+
+      // Rate limiting simple
+      await new Promise(resolve => setTimeout(resolve, 500 + Math.random() * 500))
+
+    } catch (error: any) {
+      if (error.message?.includes('HTTP 400') || error.message?.includes('HTTP 403')) {
+        console.log(`🚫 Vinted limit reached at page ${page}`)
+        break
+      }
+      throw error
+    }
+  }
+
+  return allItems
+}

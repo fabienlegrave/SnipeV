@@ -54,6 +54,9 @@ RUN apt-get update && apt-get install -y \
 ENV PUPPETEER_EXECUTABLE_PATH=/usr/bin/chromium
 ENV PUPPETEER_SKIP_CHROMIUM_DOWNLOAD=true
 
+# S'assurer que Chromium est exécutable
+RUN chmod +x /usr/bin/chromium
+
 WORKDIR /app
 
 # Copier les fichiers de dépendances

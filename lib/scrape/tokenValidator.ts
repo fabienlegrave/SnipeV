@@ -186,17 +186,12 @@ export async function validateCurrentToken(): Promise<TokenValidationResult> {
 }
 
 export async function ensureValidToken(token?: string): Promise<string> {
-  let tokenToValidate = token
-  if (!tokenToValidate) {
-    const { getClientTokenStore } = await import('@/lib/tokenStore.client')
-    tokenToValidate = getClientTokenStore().getCurrentToken() || undefined
+  if (!token) {
+    throw new Error('Token Vinted requis - veuillez fournir un token')
   }
-  if (!tokenToValidate) {
-    throw new Error('Token Vinted requis - veuillez configurer un token dans l\'application')
-  }
-  const validation = await validateVintedToken(tokenToValidate)
+  const validation = await validateVintedToken(token)
   if (!validation.isValid) {
     throw new Error(`Token invalide: ${validation.error} (${validation.details?.message})`)
   }
-  return tokenToValidate
+  return token
 } 

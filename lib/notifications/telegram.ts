@@ -12,11 +12,13 @@ interface TelegramConfig {
 
 /**
  * Envoie une notification Telegram groupée pour une alerte avec plusieurs items
+ * Inclut des boutons inline pour envoyer des messages aux vendeurs
  */
 export async function sendTelegramNotificationGrouped(
   alertTitle: string,
   items: Array<{ item: ApiItem; matchReason: string }>,
-  config: TelegramConfig
+  config: TelegramConfig,
+  options?: { includeMessageButtons?: boolean }
 ): Promise<boolean> {
   try {
     const { botToken, chatId } = config
@@ -55,6 +57,27 @@ export async function sendTelegramNotificationGrouped(
       }
     })
 
+    // Construire le clavier inline avec boutons pour chaque item
+    const includeButtons = options?.includeMessageButtons !== false // Par défaut: true
+    const inlineKeyboard: any[] = []
+    
+    if (includeButtons) {
+      // Créer un bouton pour chaque item
+      items.forEach(({ item }) => {
+        const itemPrice = item.price?.amount || 0
+        const discountPercent = parseFloat(process.env.NEGOTIATION_DISCOUNT_PERCENT || '10')
+        const targetPrice = Math.floor(itemPrice * (1 - discountPercent / 100))
+        
+        // Bouton pour envoyer un message au vendeur
+        inlineKeyboard.push([
+          {
+            text: `💬 Envoyer message au vendeur (${targetPrice}€)`,
+            callback_data: `send_message_${item.id}_${targetPrice}`
+          }
+        ])
+      })
+    }
+
     // Envoyer via l'API Telegram
     const url = `https://api.telegram.org/bot${botToken}/sendMessage`
     const response = await fetch(url, {
@@ -66,7 +89,12 @@ export async function sendTelegramNotificationGrouped(
         chat_id: chatId,
         text: message,
         parse_mode: 'MarkdownV2',
-        disable_web_page_preview: false
+        disable_web_page_preview: false,
+        ...(includeButtons && inlineKeyboard.length > 0 && {
+          reply_markup: {
+            inline_keyboard: inlineKeyboard
+          }
+        })
       })
     })
 

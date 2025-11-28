@@ -7,29 +7,27 @@
     "build": "next build",
     "start": "next start",
     "lint": "next lint",
-    "worker:alerts": "tsx scripts/worker-alerts.ts",
-    "test:failover": "tsx scripts/test-failover.ts"
+    "init:cookies": "npx tsx scripts/init-cookies.ts",
+    "fetch:favorites": "npx tsx scripts/fetch-all-favorites.ts",
+    "cleanup:alerts": "npx tsx scripts/cleanup-duplicate-alerts.ts",
+    "worker:alerts": "npx tsx scripts/worker-alerts.ts",
+    "worker:favorites-alerts": "npx tsx scripts/worker-favorites-alerts.ts",
+    "worker:main": "npx tsx scripts/main-worker.ts",
+    "test:main-worker": "npx tsx scripts/test-main-worker.ts",
+    "test:failover": "npx tsx scripts/test-failover.ts",
+    "test:endpoints": "npx tsx scripts/test-vinted-endpoints.ts"
   },
   "dependencies": {
-    "@radix-ui/react-label": "^2.0.2",
-    "@radix-ui/react-progress": "^1.1.7",
-    "@radix-ui/react-slot": "^1.0.2",
     "@supabase/supabase-js": "^2.57.4",
-    "@tanstack/react-query": "^5.17.1",
     "cheerio": "^1.1.2",
-    "class-variance-authority": "^0.7.0",
-    "clsx": "^2.1.0",
-    "lucide-react": "^0.344.0",
+    "dotenv": "^16.6.1",
     "next": "14.1.0",
-    "next-themes": "^0.4.6",
     "node-fetch": "^2.7.0",
     "puppeteer": "^21.11.0",
     "puppeteer-extra": "^3.3.6",
     "puppeteer-extra-plugin-stealth": "^2.11.2",
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
-    "tailwind-merge": "^2.2.1",
-    "tailwindcss-animate": "^1.0.7",
     "tsx": "^4.7.0"
   },
   "devDependencies": {
@@ -37,11 +35,8 @@
     "@types/node-fetch": "^2.6.13",
     "@types/react": "^18.2.48",
     "@types/react-dom": "^18.2.18",
-    "autoprefixer": "^10.0.1",
     "eslint": "^8.57.0",
     "eslint-config-next": "14.1.0",
-    "postcss": "^8.4.33",
-    "tailwindcss": "^3.3.0",
     "typescript": "^5.3.3"
   }
 }

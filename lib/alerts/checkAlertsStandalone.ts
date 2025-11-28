@@ -7,9 +7,7 @@ import { supabase } from '@/lib/supabase'
 import { logger } from '@/lib/logger'
 import { searchAllPagesWithFullSession } from '@/lib/scrape/searchCatalogWithFullSession'
 import { createFullSessionFromCookies } from '@/lib/scrape/fullSessionManager'
-import { extractSmartKeywords } from '@/lib/scrape/smartRelevanceScorer'
 import { vintedItemToApiItem } from '@/lib/utils/vintedItemToApiItem'
-import { sendTelegramNotificationGrouped, getTelegramConfig } from '@/lib/notifications/telegram'
 import { upsertItemsToDb } from '@/lib/utils/upsertItems'
 import { getRequestDelayWithJitter } from '@/lib/config/delays'
 import type { VintedItem, ApiItem } from '@/lib/types/core'
@@ -81,8 +79,10 @@ function calculateSimilarity(text1: string, text2: string): number {
   const words1 = new Set(normalizeText(text1).split(/\s+/))
   const words2 = new Set(normalizeText(text2).split(/\s+/))
   
-  const intersection = new Set([...words1].filter(x => words2.has(x)))
-  const union = new Set([...words1, ...words2])
+  const words1Array = Array.from(words1)
+  const words2Array = Array.from(words2)
+  const intersection = new Set(words1Array.filter(x => words2.has(x)))
+  const union = new Set([...words1Array, ...words2Array])
   
   return union.size > 0 ? intersection.size / union.size : 0
 }
@@ -93,9 +93,16 @@ function calculateSimilarity(text1: string, text2: string): number {
  */
 function matchesAlert(item: ApiItem | VintedItem, alert: PriceAlert): { matches: boolean; reason: string } {
   // Normaliser le prix selon le type d'item
-  const itemPrice = 'price_amount' in item 
-    ? (item.price_amount || 0) // VintedItem
-    : (item.price?.amount || 0) // ApiItem
+  let itemPrice = 0
+  if ('price_amount' in item) {
+    // VintedItem
+    itemPrice = item.price_amount || 0
+  } else if ('price' in item && item.price) {
+    // ApiItem
+    itemPrice = typeof item.price === 'object' && 'amount' in item.price 
+      ? (item.price.amount || 0)
+      : 0
+  }
   if (itemPrice > alert.max_price) {
     return { matches: false, reason: `Price too high: ${itemPrice}€ > ${alert.max_price}€` }
   }
@@ -112,10 +119,10 @@ function matchesAlert(item: ApiItem | VintedItem, alert: PriceAlert): { matches:
   const itemText = `${itemTitle} ${itemDescription}`.toLowerCase()
   const normalizedItemText = normalizeText(itemText)
 
-  // Extraire les mots-clés de l'alerte
-  const alertKeywords = extractSmartKeywords(alert.game_title)
+  // Extraction simplifiée des mots-clés de l'alerte
   const alertTitleLower = alert.game_title.toLowerCase()
   const normalizedAlertTitle = normalizeText(alert.game_title)
+  const alertKeywords = alertTitleLower.split(' ').filter(word => word.length > 2)
 
   // Détecter la plateforme depuis l'alerte (soit depuis alert.platform, soit depuis le titre)
   const platformVariants: Record<string, string[]> = {
@@ -133,7 +140,7 @@ function matchesAlert(item: ApiItem | VintedItem, alert: PriceAlert): { matches:
   }
 
   // Si une plateforme est spécifiée dans l'alerte, la vérifier
-  const platformToCheck = alert.platform || alertKeywords.platform[0]
+  const platformToCheck = alert.platform || null
   if (platformToCheck) {
     const platformLower = platformToCheck.toLowerCase()
     
@@ -149,61 +156,105 @@ function matchesAlert(item: ApiItem | VintedItem, alert: PriceAlert): { matches:
     }
   }
 
-  // Vérifier le titre du jeu - Approche plus flexible
+  // Vérifier le titre du jeu - Approche plus stricte pour éviter les faux positifs
   let titleMatch = false
   let matchReason = ''
 
-  // 1. Vérifier si le titre de l'alerte (sans plateforme) est présent dans l'item
+  // Exclure les mots communs et trop courts
+  const commonWords = ['jeu', 'game', 'pour', 'sur', 'the', 'le', 'la', 'de', 'du', 'et', 'ou', 'a', 'an', 'in', 'on', 'at', 'to', 'of', 'for', 'with', 'by', '[]', 'para']
+  const shortWords = ['2', '3', '4', '5', 'ii', 'iii', 'iv', 'v'] // Mots courts qui peuvent être ambigus
+
+  // Extraire les mots significatifs de l'alerte (hors du bloc conditionnel pour pouvoir les utiliser dans le message d'erreur)
   const alertWords = normalizedAlertTitle.split(/\s+/).filter(w => {
-    // Exclure les plateformes et mots communs
-    const commonWords = ['jeu', 'game', 'pour', 'sur', 'the', 'le', 'la', 'de', 'du', 'et', 'ou']
-    const isPlatform = alertKeywords.platform.some(p => {
-      const platformWords = p.split(/\s+/)
-      return platformWords.some(pw => w.includes(pw) || pw.includes(w))
-    })
-    // Inclure les mots de 2+ caractères, les numéros, et exclure les plateformes/mots communs
-    return (w.length >= 2 || /^\d+$/.test(w)) && !commonWords.includes(w) && !isPlatform
+    const word = w.toLowerCase().trim()
+    // Exclure les mots communs, trop courts (sauf numéros significatifs), et caractères spéciaux
+    if (word.length < 2) return false
+    if (commonWords.includes(word)) return false
+    if (/^[\[\]()\-_]+$/.test(word)) return false // Caractères spéciaux uniquement
+    return true
   })
 
-  if (alertWords.length > 0) {
-    // Vérifier si tous les mots significatifs de l'alerte sont présents dans l'item
-    const matchingWords = alertWords.filter(word => {
-      // Accepter les mots de 2+ caractères ou les numéros
-      if (word.length >= 2 || /^\d+$/.test(word)) {
-        return normalizedItemText.includes(word)
-      }
-      return false
-    })
-
-    // Si au moins 70% des mots significatifs sont présents, c'est un match
-    const matchRatio = matchingWords.length / alertWords.length
-    if (matchRatio >= 0.7) {
-      titleMatch = true
-      matchReason = `Title match: ${matchingWords.length}/${alertWords.length} words found`
-    } else if (matchingWords.length >= 2) {
-      // Si au moins 2 mots sont trouvés, c'est aussi un match (pour les titres courts)
-      titleMatch = true
-      matchReason = `Title match: ${matchingWords.length} key words found`
-    }
+  // 1. Vérifier d'abord si le titre complet (ou une grande partie) est présent dans l'item
+  // Nettoyer le titre de l'alerte en enlevant les plateformes et mots communs
+  const cleanedAlertTitle = normalizedAlertTitle
+    .replace(/\s*\[\s*\]\s*/g, ' ') // Enlever [ ]
+    .replace(/\b(para|pour|sur|jeu|game)\b/gi, ' ') // Enlever mots communs
+    .replace(/\s+/g, ' ')
+    .trim()
+  
+  // Vérifier si le titre nettoyé (ou une grande partie) est présent
+  if (cleanedAlertTitle.length > 5 && normalizedItemText.includes(cleanedAlertTitle)) {
+    titleMatch = true
+    matchReason = `Title match: exact phrase found`
   }
 
-  // 2. Fallback: utiliser extractSmartKeywords si disponible
-  if (!titleMatch && alertKeywords.gameTitle) {
-    const gameTitleWords = alertKeywords.gameTitle.split(/\s+/).filter(w => w.length > 1)
-    if (gameTitleWords.length > 0) {
-      const matchingWords = gameTitleWords.filter(word => normalizedItemText.includes(word))
-      // Accepter si au moins 60% des mots sont présents ou au moins 2 mots
-      if (matchingWords.length >= Math.max(2, Math.ceil(gameTitleWords.length * 0.6))) {
-        titleMatch = true
-        matchReason = `Title match (keywords): ${matchingWords.length}/${gameTitleWords.length} words`
+  // 2. Vérifier si les mots significatifs de l'alerte sont présents dans l'item
+  if (!titleMatch && alertWords.length > 0) {
+      // Vérifier si les mots significatifs sont présents dans l'item
+      const matchingWords = alertWords.filter(word => {
+        const wordLower = word.toLowerCase()
+        // Vérifier que le mot est présent (pas juste une partie d'un autre mot)
+        // Utiliser des word boundaries pour éviter les matches partiels
+        const wordRegex = new RegExp(`\\b${wordLower.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`, 'i')
+        return wordRegex.test(normalizedItemText)
+      })
+
+      // Calculer le ratio de matching
+      const matchRatio = matchingWords.length / alertWords.length
+
+      // Pour les titres courts (2-3 mots), exiger 100% des mots
+      if (alertWords.length <= 3) {
+        if (matchRatio === 1.0) {
+          titleMatch = true
+          matchReason = `Title match: ${matchingWords.length}/${alertWords.length} words found (exact)`
+        }
+      } 
+      // Pour les titres moyens (4-5 mots), exiger au moins 80%
+      else if (alertWords.length <= 5) {
+        if (matchRatio >= 0.8) {
+          titleMatch = true
+          matchReason = `Title match: ${matchingWords.length}/${alertWords.length} words found (${Math.round(matchRatio * 100)}%)`
+        }
       }
-    }
+      // Pour les titres longs (6+ mots), exiger au moins 70% MAIS au moins 4 mots
+      else {
+        if (matchRatio >= 0.7 && matchingWords.length >= 4) {
+          titleMatch = true
+          matchReason = `Title match: ${matchingWords.length}/${alertWords.length} words found (${Math.round(matchRatio * 100)}%)`
+        }
+      }
+
+      // Vérifier aussi l'ordre des mots importants (pour éviter "street" + "fighter" séparés)
+      if (!titleMatch && matchingWords.length >= 2 && alertWords.length >= 2) {
+        // Extraire les 2-3 premiers mots significatifs de l'alerte
+        const importantWords = alertWords.slice(0, Math.min(3, alertWords.length))
+        // Vérifier si ces mots apparaissent dans l'ordre dans l'item
+        const itemWords = normalizedItemText.split(/\s+/)
+        let consecutiveMatches = 0
+        let lastIndex = -1
+        
+        for (const word of importantWords) {
+          const wordLower = word.toLowerCase()
+          const index = itemWords.findIndex(w => w.toLowerCase().includes(wordLower))
+          if (index !== -1 && index > lastIndex) {
+            consecutiveMatches++
+            lastIndex = index
+          }
+        }
+        
+        // Si au moins 2 mots consécutifs sont trouvés dans l'ordre, c'est un match
+        if (consecutiveMatches >= 2 && consecutiveMatches === importantWords.length) {
+          titleMatch = true
+          matchReason = `Title match: ${consecutiveMatches} consecutive words found in order`
+        }
+      }
   }
 
-  // 3. Fallback final: vérifier la similarité globale
+  // 3. Fallback: vérifier la similarité globale (seuil plus élevé)
   if (!titleMatch) {
     const similarity = calculateSimilarity(alertTitleLower, itemText)
-    if (similarity >= 0.3) { // 30% de similarité minimum
+    // Augmenter le seuil à 50% pour éviter les faux positifs
+    if (similarity >= 0.5) {
       titleMatch = true
       matchReason = `Title match (similarity): ${Math.round(similarity * 100)}%`
     }
@@ -336,10 +387,10 @@ export async function checkAlertsStandalone(fullCookies: string): Promise<CheckA
       
       try {
         // Utiliser l'endpoint /api/v2/catalog/items comme la recherche normale
-        // Limité à 100 items max (5 pages) pour éviter les 403
+        // Limité à 40 items max (2 pages) pour un bon compromis entre couverture et agressivité
         const items = await searchAllPagesWithFullSession(alert.game_title, {
           priceTo: alert.max_price,
-          limit: 100, // Limite de sécurité : 100 items max (5 pages × 20 items)
+          limit: 40, // Limite de sécurité : 40 items max (2 pages × 20 items)
           session
         }).catch(async (error: Error) => {
           // Détecter les erreurs 403/401
@@ -356,7 +407,7 @@ export async function checkAlertsStandalone(fullCookies: string): Promise<CheckA
         // Filtrer par status_ids si spécifié (l'API catalog/items ne filtre pas directement par status_ids)
         let filteredItems = items
         if (alert.condition) {
-          const statusIdsArray = alert.condition.split(',').map(id => id.trim())
+          const statusIdsArray = alert.condition.split(',').map((id: string) => id.trim())
           
           // Mapping du texte de statut vers les status_ids
           const statusTextToIds: Record<string, string[]> = {
@@ -483,22 +534,10 @@ export async function checkAlertsStandalone(fullCookies: string): Promise<CheckA
           }
         }
 
-        // Envoyer immédiatement la notification Telegram pour cette alerte si des nouveaux items ont été trouvés
+        // Enregistrer les matches dans la base de données
         if (alertMatches.length > 0) {
-          const newItemsForAlert: Array<{ item: ApiItem; matchReason: string }> = []
-          
           for (const match of alertMatches) {
             try {
-              // Vérifier si ce match existe déjà dans la base de données
-              const { data: existingDbMatch } = await supabase
-                .from('alert_matches')
-                .select('id')
-                .eq('alert_id', match.alertId)
-                .eq('item_id', match.item.id)
-                .single()
-
-              const isNewItem = !existingDbMatch
-
               // Enregistrer le match dans la table de liaison
               const { error: matchError } = await supabase
                 .from('alert_matches')
@@ -513,34 +552,9 @@ export async function checkAlertsStandalone(fullCookies: string): Promise<CheckA
 
               if (matchError) {
                 logger.warn(`⚠️ Failed to save alert match for alert ${match.alertId} / item ${match.item.id}`, matchError)
-              } else if (isNewItem) {
-                // Convertir l'item en ApiItem si nécessaire
-                const apiItem: ApiItem = 'price_amount' in match.item
-                  ? vintedItemToApiItem(match.item as VintedItem)
-                  : match.item as ApiItem
-                
-                newItemsForAlert.push({
-                  item: apiItem,
-                  matchReason: match.matchReason
-                })
               }
             } catch (error) {
               logger.warn(`⚠️ Error saving alert match for alert ${match.alertId} / item ${match.item.id}`, error as Error)
-            }
-          }
-
-          // Envoyer la notification Telegram groupée immédiatement pour cette alerte
-          if (newItemsForAlert.length > 0) {
-            const telegramConfig = getTelegramConfig()
-            if (telegramConfig) {
-              logger.info(`📱 Envoi de la notification Telegram pour l'alerte "${alert.game_title}" avec ${newItemsForAlert.length} nouveau(x) item(s)...`)
-              await sendTelegramNotificationGrouped(
-                alert.game_title,
-                newItemsForAlert,
-                telegramConfig
-              )
-            } else {
-              logger.debug('ℹ️ Configuration Telegram non disponible, notification non envoyée')
             }
           }
         }

@@ -39,36 +39,35 @@ export function createFullSessionFromCookies(cookieString: string): FullVintedSe
 
 /**
  * Construit les headers pour l'API Vinted (JSON)
- * IMPORTANT: Headers copiés EXACTEMENT depuis le navigateur qui fonctionne
- * Note: Même si l'API retourne du JSON, le navigateur envoie accept: text/html
+ * Headers EXACTS du navigateur qui fonctionne - COPIÉS DIRECTEMENT
  */
 export function buildVintedApiHeaders(session: FullVintedSession): Record<string, string> {
   return {
-    // Headers EXACTS du navigateur qui fonctionne
+    // Headers EXACTS du navigateur qui fonctionne (Edge 137)
     'accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7',
     'accept-encoding': 'gzip, deflate, br, zstd',
-    'accept-language': 'fr-FR,fr;q=0.9,en-US;q=0.8,en;q=0.7',
+    'accept-language': 'fr,fr-FR;q=0.9,en;q=0.8,en-GB;q=0.7,en-US;q=0.6',
     'cache-control': 'no-cache',
     'connection': 'keep-alive',
     'cookie': session.fullCookieString,
     // ⚠️ NE PAS définir 'host' - Node.js le gère automatiquement
-    // Définir 'host' manuellement cause des erreurs 403 sur Vercel/Cloudflare
     'pragma': 'no-cache',
-    'sec-ch-ua': '"Google Chrome";v="141", "Not?A_Brand";v="8", "Chromium";v="141"',
+    'sec-ch-ua': '"Microsoft Edge";v="137", "Chromium";v="137", "Not/A)Brand";v="24"',
     'sec-ch-ua-arch': '"x86"',
     'sec-ch-ua-bitness': '"64"',
-    'sec-ch-ua-full-version': '"141.0.7390.123"',
-    'sec-ch-ua-full-version-list': '"Google Chrome";v="141.0.7390.123", "Not?A_Brand";v="8.0.0.0", "Chromium";v="141.0.7390.123"',
+    'sec-ch-ua-full-version': '"137.0.3296.93"',
+    'sec-ch-ua-full-version-list': '"Microsoft Edge";v="137.0.3296.93", "Chromium";v="137.0.7151.120", "Not/A)Brand";v="24.0.0.0"',
     'sec-ch-ua-mobile': '?0',
     'sec-ch-ua-model': '""',
     'sec-ch-ua-platform': '"Windows"',
     'sec-ch-ua-platform-version': '"15.0.0"',
+    // Headers EXACTS pour navigation
     'sec-fetch-dest': 'document',
     'sec-fetch-mode': 'navigate',
     'sec-fetch-site': 'none',
     'sec-fetch-user': '?1',
     'upgrade-insecure-requests': '1',
-    'user-agent': session.userAgent || 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Safari/537.36'
+    'user-agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/137.0.0.0 Safari/537.36 Edg/137.0.0.0'
   }
 }
 

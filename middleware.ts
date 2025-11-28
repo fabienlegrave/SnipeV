@@ -8,8 +8,23 @@ import type { NextRequest } from 'next/server'
  * par une vérification côté serveur via middleware
  */
 export function middleware(request: NextRequest) {
+  const pathname = request.nextUrl.pathname
+  
+  // Routes publiques qui ne nécessitent pas d'API key
+  const publicRoutes = [
+    '/api/v1/token/refresh/force', // Force cookie generation (accessible sans API key)
+    '/api/v1/worker/main/init', // Main worker initialization
+    '/api/v1/worker/health', // Worker health check (pour le main worker)
+    '/api/health', // Health check
+  ]
+  
+  // Si c'est une route publique, autoriser sans vérification
+  if (publicRoutes.some(route => pathname.startsWith(route))) {
+    return NextResponse.next()
+  }
+  
   // Vérifier uniquement les routes API
-  if (request.nextUrl.pathname.startsWith('/api/v1/')) {
+  if (pathname.startsWith('/api/v1/')) {
     const apiKey = request.headers.get('x-api-key')
     const expectedApiKey = process.env.API_SECRET
 

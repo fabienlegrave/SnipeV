@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { searchAllPagesWithFullSession } from '@/lib/scrape/searchCatalogWithFullSession'
+import { searchVintedCatalogSimple } from '@/lib/scrape/searchCatalog'
 import { ScrapeSearchRequest } from '@/lib/types/core'
 import { createFullSessionFromCookies, createSimpleSession } from '@/lib/scrape/fullSessionManager'
+import { getCookiesForScraping } from '@/lib/utils/getCookiesFromDb'
 import { logger } from '@/lib/logger'
 
 export async function POST(request: NextRequest) {
@@ -19,47 +20,55 @@ export async function POST(request: NextRequest) {
     }
 
     logger.scrape.search(query, { limit })
-    logger.auth.token('Auth check', {
-      hasFullCookies: !!fullCookies,
-      fullCookiesLength: fullCookies?.length || 0,
-      hasAccessToken: !!accessToken
-    })
     
     let session = undefined
     
-    // PRIORITÉ : fullCookies d'abord (contient cf_clearance, datadome, etc.)
-    // Puis accessToken si pas de cookies complets
+    // PRIORITÉ 1 : Cookies fournis dans la requête (pour override)
     if (fullCookies && fullCookies.trim().length > 0) {
       try {
         session = createFullSessionFromCookies(fullCookies)
-        logger.auth.cookies('Utilisation des cookies complets (avec cf_clearance, datadome, etc.)')
+        logger.auth.cookies('Utilisation des cookies fournis dans la requête')
       } catch (error) {
         logger.auth.error('Erreur parsing cookies', error as Error)
         return NextResponse.json({ error: 'Invalid cookies format' }, { status: 400 })
       }
     } else {
-      // Fallback : utiliser le token (mais moins fiable car pas de cookies Cloudflare)
-      const tokenToUse = accessToken || process.env.VINTED_ACCESS_TOKEN
+      // PRIORITÉ 2 : Récupérer les cookies depuis la base de données (pour les workers)
+      const dbCookies = await getCookiesForScraping()
       
-      if (tokenToUse) {
-        session = createSimpleSession(tokenToUse)
-        logger.auth.token('Utilisation du token d\'accès (mode simple - peut échouer avec Cloudflare)')
-      } else {
-        logger.auth.error('Aucun token disponible - authentification requise')
-        return NextResponse.json({
-          error: 'Authentication required',
-          details: 'Vinted access token or fullCookies is required for scraping',
-          suggestion: 'Fournissez fullCookies (recommandé) ou accessToken dans la requête.'
-        }, { status: 401 })
+      if (dbCookies) {
+        try {
+          session = createFullSessionFromCookies(dbCookies)
+          logger.auth.cookies('Utilisation des cookies Cloudflare depuis la base de données')
+        } catch (error) {
+          logger.auth.error('Erreur parsing cookies depuis DB', error as Error)
+          // Continuer avec le fallback
+        }
+      }
+      
+      // PRIORITÉ 3 : Fallback sur accessToken (moins fiable)
+      if (!session) {
+        const tokenToUse = accessToken || process.env.VINTED_ACCESS_TOKEN
+        
+        if (tokenToUse) {
+          session = createSimpleSession(tokenToUse)
+          logger.auth.token('Utilisation du token d\'accès (mode simple - peut échouer avec Cloudflare)')
+        } else {
+          logger.auth.error('Aucun cookie/token disponible - authentification requise')
+          return NextResponse.json({
+            error: 'Authentication required',
+            details: 'Cookies Cloudflare requis pour le scraping. Ils doivent être générés et stockés en base de données.',
+            suggestion: 'Les cookies sont générés automatiquement au démarrage ou configurez VINTED_FULL_COOKIES dans .env.local'
+          }, { status: 401 })
+        }
       }
     }
 
-    const items = await searchAllPagesWithFullSession(query, {
+    const items = await searchVintedCatalogSimple(query, {
       priceFrom,
       priceTo,
       limit,
-      session,
-      minRelevanceScore
+      session
     })
 
     logger.scrape.success(items.length)

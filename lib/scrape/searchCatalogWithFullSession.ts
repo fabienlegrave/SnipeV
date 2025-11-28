@@ -3,7 +3,7 @@ import type { ApiItem, VintedPhoto } from '../types'
 import { createSimpleSession, buildFullVintedHeaders, type FullVintedSession } from './fullSessionManager'
 import { filterAndSortByRelevance } from './relevanceScorer'
 // Enrichissement retiré : trop de risques de ban/429 et peu de plus-value
-import { filterAndSortSmart, calculateSmartRelevanceScore, extractSmartKeywords } from './smartRelevanceScorer'
+// Removed smart relevance scorer imports - simplified approach
 import { getRequestDelayWithJitter } from '../config/delays'
 import { writeFile, mkdir } from 'fs/promises'
 import { join } from 'path'
@@ -514,8 +514,8 @@ export async function searchAllPagesWithFullSession(
   let allItems: ApiItem[] = []
   let currentPage = 1
   let hasMore = true
-  // Réduit à 3 pages max pour diviser par ~3 la pression
-  const maxPagesToSearch = 3
+  // Compromis : 2 pages max (au lieu de 3) pour réduire la pression tout en gardant une bonne couverture
+  const maxPagesToSearch = 2
   let totalPages = maxPagesToSearch // Valeur par défaut, sera mise à jour après la première requête
   let totalItemsFromApi: number | null = null // Total items renvoyé par l'API
   
@@ -638,12 +638,11 @@ export async function searchAllPagesWithFullSession(
   // logger.info(`📈 Limite de résultats: ${limit}`)
   // logger.info(`${'='.repeat(80)}\n`)
   
-  // Filtrage et scoring intelligent (sans enrichissement)
-  // logger.info(`🔍 Filtrage intelligent (${allItems.length} items bruts)...`)
-  const finalItems = filterAndSortSmart(allItems, searchText, {
-    minScore: minRelevanceScore || 50,
-    maxResults: limit,
-    requireHighConfidence: false
+  // Filtrage simple (sans enrichissement IA)
+  // Utiliser filterAndSortByRelevance qui existe déjà
+  const finalItems = filterAndSortByRelevance(allItems, searchText, {
+    minScore: minRelevanceScore || 0,
+    maxResults: limit
   })
   
   // Sauvegarder les résultats dans un fichier pour analyse (désactivé)
@@ -663,21 +662,16 @@ export async function searchAllPagesWithFullSession(
   // Si aucun résultat mais qu'on a des items, retourner quand même les meilleurs
   if (finalItems.length === 0 && allItems.length > 0) {
     logger.warn(`⚠️ Aucun item ne passe le filtre strict, retour des meilleurs résultats...`)
-    const fallbackItems = filterAndSortSmart(allItems, searchText, {
-      minScore: 10, // Seuil réduit
+    const fallbackItems = filterAndSortByRelevance(allItems, searchText, {
+      minScore: 0, // Seuil réduit
       maxResults: Math.min(limit, 30)
     })
     
     // Si toujours rien, retourner les top items même avec score bas
     if (fallbackItems.length === 0) {
-      logger.warn(`⚠️ Aucun item même avec seuil bas, retour des top items par score...`)
-      const { calculateSmartRelevanceScore } = await import('./smartRelevanceScorer')
-      const allScored = allItems.map(item => {
-        const { score } = calculateSmartRelevanceScore(item, searchText)
-        return { item, score }
-      })
-      allScored.sort((a, b) => b.score - a.score)
-      return allScored.slice(0, Math.min(limit, 20)).map(s => s.item)
+      logger.warn(`⚠️ Aucun item même avec seuil bas, retour des top items...`)
+      // Retourner simplement les premiers items
+      return allItems.slice(0, Math.min(limit, 20))
     }
     
     return fallbackItems
@@ -706,10 +700,17 @@ async function saveSearchResultsToFile(
     const filename = `search_${searchNormalized}_${timestamp}.json`
     const filepath = join(outputDir, filename)
     
-    // Calculer les scores détaillés pour tous les items
-    const keywords = extractSmartKeywords(searchText)
+    // Calculer les scores simples pour tous les items
+    const searchWords = searchText.toLowerCase().split(/\s+/).filter(w => w.length > 2)
     const allItemsWithScores = allItems.map(item => {
-      const { score, reasons, confidence } = calculateSmartRelevanceScore(item, searchText)
+      // Score simple basé sur la présence des mots-clés
+      const titleLower = (item.title || '').toLowerCase()
+      const descLower = (item.description || '').toLowerCase()
+      const matchingWords = searchWords.filter(word => 
+        titleLower.includes(word) || descLower.includes(word)
+      )
+      const score = (matchingWords.length / Math.max(searchWords.length, 1)) * 100
+      
       return {
         id: item.id,
         title: item.title,
@@ -717,25 +718,15 @@ async function saveSearchResultsToFile(
         url: item.url,
         description: item.description?.substring(0, 500) || null,
         condition: item.condition,
-        detected_platform: item.detected_platform,
         score,
-        confidence,
-        reasons,
+        confidence: score > 50 ? 'high' : score > 25 ? 'medium' : 'low',
         isInFinalResults: finalItems.some(fi => fi.id === item.id),
         // Correspondances détaillées
         matches: {
-          exact: keywords.exact.filter(kw => 
-            (item.title || '').toLowerCase().includes(kw.toLowerCase()) ||
-            (item.description || '').toLowerCase().includes(kw.toLowerCase())
-          ),
-          platform: keywords.platform.filter(p => 
-            (item.title || '').toLowerCase().includes(p.toLowerCase()) ||
-            (item.description || '').toLowerCase().includes(p.toLowerCase())
-          ),
-          gameTitle: keywords.gameTitle ? {
-            inTitle: (item.title || '').toLowerCase().includes(keywords.gameTitle.toLowerCase()),
-            inDescription: (item.description || '').toLowerCase().includes(keywords.gameTitle.toLowerCase())
-          } : null
+          exact: searchWords.filter(kw => 
+            titleLower.includes(kw.toLowerCase()) ||
+            descLower.includes(kw.toLowerCase())
+          )
         },
         vintedScore: item.search_tracking_params?.score,
         viewCount: item.view_count,
@@ -756,10 +747,8 @@ async function saveSearchResultsToFile(
         minRelevanceScore: options.minRelevanceScore,
         limit: options.limit,
         keywords: {
-          exact: keywords.exact,
-          platform: keywords.platform,
-          gameTitle: keywords.gameTitle,
-          allWords: keywords.allWords
+          exact: searchWords,
+          allWords: searchWords
         }
       },
       items: allItemsWithScores,

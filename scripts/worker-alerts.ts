@@ -6,6 +6,7 @@
 import { checkAlertsStandalone } from '@/lib/alerts/checkAlertsStandalone'
 import { generateCookiesViaFactory } from '@/lib/alerts/cookieFactory'
 import { handle403Failover, reset403Counter, initializeFailover } from '@/lib/failover/failover-manager'
+import { getCookiesForScraping } from '@/lib/utils/getCookiesFromDb'
 import { logger } from '@/lib/logger'
 import { supabase } from '@/lib/supabase'
 
@@ -112,57 +113,23 @@ async function saveCookies(cookies: string): Promise<void> {
     logger.info('💡 Les cookies sont toujours utilisés en mémoire pour cette session, mais ne seront pas persistés entre redémarrages')
     logger.info('💡 Solution: Créer la table app_settings avec les colonnes: key (text, primary key), value (text), updated_at (timestamp)')
   } catch (error) {
-    logger.warn('⚠️ Erreur lors de la sauvegarde des cookies:', error)
+    logger.warn('⚠️ Erreur lors de la sauvegarde des cookies:', error as Error)
   }
 }
 
-// Récupérer les cookies depuis la base de données ou les variables d'environnement
+// Récupérer les cookies depuis la base de données (utilise getCookiesForScraping)
 async function getCookies(): Promise<string | null> {
-  // Option 1: Récupérer depuis la base de données (table user_preferences ou similaire)
-  if (supabase) {
-    try {
-      // Essayer plusieurs noms de tables possibles
-      const tables = ['user_preferences', 'vinted_credentials', 'app_settings']
-      
-      for (const tableName of tables) {
-        try {
-          const { data: prefs } = await supabase
-            .from(tableName)
-            .select('vinted_cookies, full_cookies, cookies')
-            .order('updated_at', { ascending: false })
-            .limit(1)
-            .single()
-            .catch(() => ({ data: null }))
-
-          const cookies = prefs?.vinted_cookies || prefs?.full_cookies || prefs?.cookies
-          if (cookies && typeof cookies === 'string' && cookies.trim().length > 0) {
-            logger.info(`✅ Cookies récupérés depuis la table ${tableName}`)
-            return cookies
-          }
-        } catch (error) {
-          // Table n'existe pas, continuer
-          continue
-        }
-      }
-    } catch (error) {
-      logger.debug('Erreur lors de la récupération des cookies depuis la base de données')
-    }
+  // Utilise la fonction centralisée qui récupère depuis la DB puis fallback sur env
+  const cookies = await getCookiesForScraping()
+  
+  if (!cookies) {
+    logger.warn('⚠️ Aucun cookie trouvé. Le worker nécessite des cookies Cloudflare pour fonctionner.')
+    logger.info('💡 Pour résoudre ce problème:')
+    logger.info('   1. Les cookies sont générés automatiquement au démarrage et stockés en base')
+    logger.info('   2. Ou configurez VINTED_FULL_COOKIES dans les secrets Fly.io (cookies Cloudflare)')
   }
-
-  // Option 2: Utiliser une variable d'environnement comme fallback
-  // Note: Les cookies dans les variables d'environnement doivent être mis à jour manuellement
-  const envCookies = process.env.VINTED_FULL_COOKIES
-  if (envCookies && envCookies.trim().length > 0) {
-    logger.info('✅ Cookies récupérés depuis les variables d\'environnement')
-    return envCookies
-  }
-
-  logger.warn('⚠️ Aucun cookie trouvé. Le worker nécessite des cookies valides pour fonctionner.')
-  logger.info('💡 Pour résoudre ce problème:')
-  logger.info('   1. Utilisez le Cookie Factory depuis l\'interface web')
-  logger.info('   2. Les cookies seront sauvegardés automatiquement')
-  logger.info('   3. Ou configurez VINTED_FULL_COOKIES dans les secrets Fly.io')
-  return null
+  
+  return cookies
 }
 
 // Générer de nouveaux cookies via Cookie Factory

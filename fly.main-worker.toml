@@ -1,0 +1,47 @@
+# fly.toml app configuration file generated for main-worker-small-silence-2788 on 2025-11-26T10:53:13+01:00
+#
+# See https://fly.io/docs/reference/configuration/ for information about how to use this file.
+#
+
+app = 'main-worker-small-silence-2788'
+primary_region = 'cdg'
+
+[build]
+
+[env]
+  HEALTH_CHECK_INTERVAL_MS = '60000'
+  LB_STRATEGY = 'random'
+  MAX_RETRIES = '3'
+  WORKER_BAN_DURATION_MS = '3600000' # 1 heure - Durée du ban pour les IPs bannies par Vinted
+  WORKER_FR_URL = 'https://worker-fr-icy-night-8180.fly.dev'
+  WORKER_NL_URL = 'https://worker-nl-falling-snow-1037.fly.dev'
+  WORKER_REQUEST_TIMEOUT_MS = '60000' # 60 secondes (augmenté pour les cycles longs)
+  WORKER_UK_URL = 'https://worker-uk-silent-voice-1248.fly.dev'
+  WORKER_US_URL = 'https://worker-us-late-dream-9122.fly.dev'
+  TOKEN_REFRESH_INTERVAL_MS = '3600000' # 1 heure
+  ALERT_CHECK_INTERVAL_MS = '600000' # 10 minutes - Intervalle entre chaque cycle de vérification des alertes (compromis entre agressivité et performance)
+
+[processes]
+  main-worker = 'npm start'
+
+[http_service]
+  internal_port = 3000
+  force_https = true
+  auto_stop_machines = 'stop'
+  auto_start_machines = true
+  min_machines_running = 1
+  processes = ['main-worker']
+  
+  # Health check pour maintenir l'app active et déclencher l'initialisation
+  [[http_service.checks]]
+    grace_period = "10s"
+    interval = "30s"
+    method = "GET"
+    timeout = "5s"
+    path = "/api/health"
+
+[[vm]]
+  memory = '1gb'  # Augmenté à 1GB pour supporter Puppeteer/Chromium
+  cpu_kind = 'shared'
+  cpus = 1
+  processes = ['main-worker']

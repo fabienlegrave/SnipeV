@@ -1,3 +1,15 @@
+// Charger les variables d'environnement depuis .env.local si disponible
+// (important pour les scripts standalone qui n'utilisent pas Next.js)
+if (typeof window === 'undefined') {
+  try {
+    const { config } = require('dotenv')
+    const { resolve } = require('path')
+    config({ path: resolve(process.cwd(), '.env.local') })
+  } catch (e) {
+    // dotenv non disponible ou erreur, continuer avec process.env
+  }
+}
+
 import { createClient } from '@supabase/supabase-js'
 
 // Server-side Supabase client (for API routes)
